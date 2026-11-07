@@ -2,9 +2,9 @@
     影色のさくらんぼ · fog, ash & porcelain rose
     a SillyTavern extension by ewwn1h
 
-    Replaces the welcome screen with a shelf of character cameos.
-    Rows that scroll sideways: pinned, recent, frequent, everyone.
-    Tap a cameo to see that character's chats; pin, archive, search.
+    Replaces the welcome screen with rows of character cameos that scroll
+    sideways (pinned, recent, frequent, everyone) and adds a "close chat"
+    cross to the top bar. Tap a cameo to see that character's chats.
     The theme itself lives in the Moonlit Echoes preset.
 */
 
@@ -12,7 +12,7 @@ const MODULE = 'shadowCherry';
 const DEFAULTS = Object.freeze({
     home: true,
     closeButton: true,
-    filter: 'recent',
+    filter: 'recent',      // sort order of the "all" view: recent · frequent · name
 });
 
 const ctx = () => SillyTavern.getContext();
@@ -45,28 +45,26 @@ const T = RU ? {
     chatFrom: (d) => `чат от ${d}`,
     pinned: '✦ закреплённые', all: 'все', archived: 'архив', empty: 'Пока здесь пусто. Начните чат с кем-нибудь из персонажей.',
     noMatch: 'Никого не нашлось.', today: 'сегодня', yesterday: 'вчера',
-    chats: n => `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'чат' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'чата' : 'чатов'}`,
     mes: 'mes', newChat: '+ новый чат', pin: '✦ закрепить', unpin: '✦ открепить', toArchive: 'в архив', fromArchive: 'из архива',
     last: '✦ last', rename: 'переименовать', fav: '✦ избранное', unfav: '✦ убрать', download: 'скачать', del: 'удалить',
     more: 'ещё', loading: 'загружаю чаты…', noChats: 'У этого персонажа пока нет чатов.',
     renamePrompt: 'Новое название чата', deleteConfirm: 'Удалить этот чат? Вернуть его не получится.',
     renamed: 'Чат переименован.', deleted: 'Чат удалён.', failed: 'Не получилось. Подробности в консоли.',
     close: 'Закрыть чат', panelClose: 'Крестик «закрыть чат» на верхней панели',
-    panelHome: 'Своя главная (полка)', panelNote: 'Заменяет стартовый экран полкой с камеями. Если стоит Character Chat Pills, отключите его, чтобы главные не спорили.',
+    panelHome: 'Своя главная (полка)',
 } : {
     continue: 'continue', search: 'search characters…', archive: 'archive', back: '‹ back',
     recent: 'recent', frequent: 'frequent', name: 'a–z', seeAll: 'all →', found: 'found',
     chatFrom: (d) => `chat from ${d}`,
     pinned: '✦ pinned', all: 'all', archived: 'archive', empty: 'Nothing here yet. Start a chat with one of your characters.',
     noMatch: 'No one found.', today: 'today', yesterday: 'yesterday',
-    chats: n => `${n} chat${n === 1 ? '' : 's'}`,
     mes: 'mes', newChat: '+ new chat', pin: '✦ pin', unpin: '✦ unpin', toArchive: 'archive', fromArchive: 'unarchive',
     last: '✦ last', rename: 'rename', fav: '✦ favourite', unfav: '✦ unfavourite', download: 'download', del: 'delete',
     more: 'more', loading: 'loading chats…', noChats: 'This character has no chats yet.',
     renamePrompt: 'New chat name', deleteConfirm: 'Delete this chat? This cannot be undone.',
     renamed: 'Chat renamed.', deleted: 'Chat deleted.', failed: 'That did not work. See the console for details.',
     close: 'Close chat', panelClose: '“Close chat” cross on the top bar',
-    panelHome: 'Custom home (shelf)', panelNote: 'Replaces the welcome screen with a shelf of cameos. If Character Chat Pills is installed, turn it off so the two homes do not clash.',
+    panelHome: 'Custom home (shelf)',
 };
 
 /* ── helpers ──────────────────────────────────────────── */
@@ -116,6 +114,7 @@ const view = { mode: 'shelf', prev: 'shelf', avatar: null, query: '', archive: f
 const ROW_MAX = 12;       // cameos per sideways row before "all →"
 const lastSnips = new Map(); // avatar -> last line of their latest chat
 const chatCounts = new Map();   // avatar -> number of chats (lazy, cached)
+const pendingCounts = new Set(); // avatars whose count is being fetched right now
 
 function characterIndex(avatar) {
     return ctx().characters.findIndex((c) => c.avatar === avatar);
@@ -293,7 +292,6 @@ function chatRow(c, chat, i, isLast) {
 function pageHtml() {
     const s = getSettings();
     const c = characterBy(view.avatar);
-    if (!c) { view.mode = 'shelf'; return shelfHtml(); }
     const pinned = s.pinned.includes(c.avatar), archived = s.archived.includes(c.avatar);
     let body;
     if (!view.chats) body = `<p class="sc-empty">${T.loading}</p>`;
@@ -321,6 +319,7 @@ let homeEl = null;
 function render({ keepFocus = false } = {}) {
     if (!homeEl || !homeEl.isConnected) return;
     const caret = keepFocus ? document.getElementById('sc-q')?.selectionStart : null;
+    if (view.mode === 'page' && !characterBy(view.avatar)) view.mode = 'shelf';
     homeEl.dataset.mode = view.mode;
     homeEl.innerHTML = view.mode === 'page' ? pageHtml() : view.mode === 'all' ? allHtml() : shelfHtml();
     if (keepFocus) {
@@ -331,8 +330,11 @@ function render({ keepFocus = false } = {}) {
     if (view.mode === 'shelf') loadLastSnip();
 }
 
+// every render asks for missing counts; avatars already in flight are skipped,
+// so typing in the search box never repeats a request
 async function loadCounts() {
-    const want = chattedCharacters().map((c) => c.avatar).filter((a) => !chatCounts.has(a));
+    const want = chattedCharacters().map((c) => c.avatar).filter((a) => !chatCounts.has(a) && !pendingCounts.has(a));
+    want.forEach((a) => pendingCounts.add(a));
     for (let i = 0; i < want.length; i += 4) {
         await Promise.all(want.slice(i, i + 4).map(async (avatar) => {
             try {
@@ -343,6 +345,7 @@ async function loadCounts() {
                 const data = await res.json();
                 chatCounts.set(avatar, Array.isArray(data) ? data.length : 0);
             } catch { chatCounts.set(avatar, null); }
+            pendingCounts.delete(avatar);
             // the same character can sit in several rows at once
             const c = characterBy(avatar);
             const n = chatCounts.get(avatar);
@@ -350,7 +353,7 @@ async function loadCounts() {
                 if (c) metaEl.textContent = [dayLabel(toMoment(Number(c.date_last_chat))), n > 0 ? n : null].filter((x) => x !== null && x !== '').join(' · ');
             });
         }));
-        if (!homeEl?.isConnected) return;
+        if (!homeEl?.isConnected) { want.forEach((a) => pendingCounts.delete(a)); return; }
     }
 }
 
@@ -393,7 +396,7 @@ function mount() {
     homeEl = document.createElement('div');
     homeEl.id = 'sc-home';
     chatEl.prepend(homeEl);
-    view.mode = 'shelf'; view.avatar = null; view.openMenu = null; view.chats = null;
+    Object.assign(view, { mode: 'shelf', prev: 'shelf', avatar: null, query: '', archive: false, openMenu: null, chats: null });
     render();
     chatEl.scrollTop = 0;
 }
@@ -405,7 +408,7 @@ async function openCharacterChatFile(avatar, file) {
     try {
         await ctx().selectCharacterById(id);
         const m = await st();
-        try { m?.setActiveCharacter?.(avatar); ctx().saveSettingsDebounced(); } catch { /* optional */ }
+        try { m?.setActiveCharacter?.(avatar); save(); } catch { /* optional */ }
         const name = stripExt(file);
         if (name && ctx().getCurrentChatId() !== name) await ctx().openCharacterChat(name);
     } catch (e) {
@@ -430,6 +433,7 @@ async function newChat(avatar) {
 
 async function renameChat(avatar, file) {
     const id = characterIndex(avatar);
+    if (id < 0) return;
     const oldName = stripExt(file);
     const { callGenericPopup, POPUP_TYPE } = ctx();
     const newName = await callGenericPopup(`<h3>${esc(T.renamePrompt)}</h3>`, POPUP_TYPE.INPUT, oldName);
@@ -450,13 +454,15 @@ async function renameChat(avatar, file) {
 }
 
 async function deleteChat(avatar, file) {
+    const id = characterIndex(avatar);
+    if (id < 0) return;
     const { callGenericPopup, POPUP_TYPE } = ctx();
     const ok = await callGenericPopup(esc(T.deleteConfirm), POPUP_TYPE.CONFIRM);
     if (!ok) return;
     try {
         const m = await st();
         if (!m?.deleteCharacterChatByName) throw new Error('deleteCharacterChatByName missing');
-        await m.deleteCharacterChatByName(String(characterIndex(avatar)), stripExt(file));
+        await m.deleteCharacterChatByName(String(id), stripExt(file));
         const s = getSettings(), favs = s.favChats[avatar];
         if (favs?.includes(file)) { favs.splice(favs.indexOf(file), 1); save(); }
         chatCounts.delete(avatar);
@@ -553,7 +559,7 @@ function closeButton() {
         btn = document.createElement('div');
         btn.id = 'sc-close-chat';
         btn.className = 'drawer';
-        btn.innerHTML = `<div class="sc-close-toggle drawer-header"><div class="drawer-icon closedIcon interactable" role="button" tabindex="0" title="${T.close}" aria-label="${T.close}"></div></div>`;
+        btn.innerHTML = `<div class="drawer-header"><div class="drawer-icon closedIcon interactable" role="button" tabindex="0" title="${T.close}" aria-label="${T.close}"></div></div>`;
         holder.prepend(btn);
         const icon = btn.querySelector('.drawer-icon');
         const run = async () => {
@@ -594,7 +600,6 @@ function buildPanel() {
                         <input id="sc-home-on" type="checkbox">
                         <span>${T.panelHome}</span>
                     </label>
-                    <small class="sc-note">${T.panelNote}</small>
                     <label class="checkbox_label" for="sc-close-on">
                         <input id="sc-close-on" type="checkbox">
                         <span>${T.panelClose}</span>

@@ -198,4 +198,3 @@
 .sc-settings .inline-drawer-header b { font-weight: 600; letter-spacing: .02em; }
 .sc-settings .sc-star { color: var(--SmartThemeQuoteColor, #f9dcec); font-size: .8em; }
 .sc-settings .inline-drawer-content { display: flex; flex-direction: column; gap: 8px; padding-block: 6px 10px; }
-.sc-settings .sc-note { opacity: .7; line-height: 1.4; }
