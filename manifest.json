@@ -1,0 +1,13 @@
+{
+    "display_name": "✦ Shadow Cherry",
+    "description": "Atmosphere for the Shadow Cherry theme: slowly drifting fog and dust, with their own switches. Respects reduced motion.",
+    "loading_order": 200,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "ewwn1h",
+    "version": "1.0.0",
+    "auto_update": true,
+    "homePage": "https://github.com/kkyanlx/ST-ShadowCherry"
+}
