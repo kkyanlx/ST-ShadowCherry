@@ -1,6 +1,6 @@
-/*  ✦ Shadow Cherry — home shelf + settings panel.
-    Colours and fonts come from the theme (--sc-* in the Moonlit preset);
-    every value has a fallback, so the home also works under other themes. */
+/*  ✦ Shadow Cherry — home (rows of cameos, character page), the close-chat cross
+    and the settings panel. Colours and fonts come from the theme (--sc-* in the
+    Moonlit preset); every value has a fallback, so it also works under other themes. */
 
 #sc-home {
     --h-ink: var(--sc-black, #161616);
@@ -12,7 +12,7 @@
     --h-line: var(--sc-line, rgba(199, 179, 190, .5));
     --h-soft: rgba(199, 179, 190, .22);
     --h-glow: var(--sc-glow, rgba(249, 220, 236, .35));
-    --h-name: var(--sc-name, "UnifrakturMaguntia", Georgia, serif);
+    --h-name: var(--sc-name, "Italiana", "Cormorant Garamond", Georgia, serif);
     --h-text: var(--sc-text, "Spectral", Georgia, serif);
     --h-meta: var(--sc-meta, "Special Elite", "Courier New", monospace);
     --h-corner: linear-gradient(var(--h-line), var(--h-line));
@@ -88,7 +88,7 @@
 #sc-home .sc-tools { display: flex; gap: 8px; align-items: stretch; width: 100%; }
 #sc-home .sc-search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--h-soft); color: var(--h-faded); }
 #sc-home .sc-search input {
-    flex: 1; min-width: 0; padding: 7px 0; border: 0; outline: 0; background: none;
+    flex: 1; width: 100%; min-width: 0; padding: 7px 0; border: 0; outline: 0; background: none;
     color: var(--h-bone); font: italic .95rem var(--h-text);
 }
 #sc-home .sc-search input::placeholder { color: var(--h-faded); opacity: 1; }
@@ -99,7 +99,6 @@
 #sc-home .sc-btn.sc-fill,
 #sc-home .sc-btn.sc-on { color: var(--h-ink); background: var(--h-dusty); border-color: var(--h-dusty); }
 #sc-home .sc-chips { display: flex; gap: 6px; flex-wrap: wrap; }
-#sc-home .sc-search input { width: 100%; }
 #sc-home .sc-chips button {
     font: .64rem var(--h-meta); letter-spacing: .12em; text-transform: uppercase;
     color: var(--h-mauve); border: 1px solid var(--h-soft); padding: 3px 9px;
