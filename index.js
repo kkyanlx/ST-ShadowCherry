@@ -10,6 +10,7 @@
 const MODULE = 'shadowCherry';
 const DEFAULTS = Object.freeze({
     home: true,
+    closeButton: true,
     filter: 'recent',
 });
 
@@ -45,9 +46,11 @@ const T = RU ? {
     chats: n => `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'чат' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'чата' : 'чатов'}`,
     mes: 'mes', newChat: '+ новый чат', pin: '✦ закрепить', unpin: '✦ открепить', toArchive: 'в архив', fromArchive: 'из архива',
     last: '✦ last', rename: 'переименовать', fav: '✦ избранное', unfav: '✦ убрать', download: 'скачать', del: 'удалить',
+    showAll: (n) => `показать всех · ${n}`, collapse: 'свернуть',
     more: 'ещё', loading: 'загружаю чаты…', noChats: 'У этого персонажа пока нет чатов.',
     renamePrompt: 'Новое название чата', deleteConfirm: 'Удалить этот чат? Вернуть его не получится.',
     renamed: 'Чат переименован.', deleted: 'Чат удалён.', failed: 'Не получилось. Подробности в консоли.',
+    close: 'Закрыть чат', panelClose: 'Крестик «закрыть чат» на верхней панели',
     panelHome: 'Своя главная (полка)', panelNote: 'Заменяет стартовый экран полкой с камеями. Если стоит Character Chat Pills, отключите его, чтобы главные не спорили.',
 } : {
     continue: 'continue', search: 'search characters…', archive: 'archive', back: '‹ back',
@@ -57,9 +60,11 @@ const T = RU ? {
     chats: n => `${n} chat${n === 1 ? '' : 's'}`,
     mes: 'mes', newChat: '+ new chat', pin: '✦ pin', unpin: '✦ unpin', toArchive: 'archive', fromArchive: 'unarchive',
     last: '✦ last', rename: 'rename', fav: '✦ favourite', unfav: '✦ unfavourite', download: 'download', del: 'delete',
+    showAll: (n) => `show all · ${n}`, collapse: 'collapse',
     more: 'more', loading: 'loading chats…', noChats: 'This character has no chats yet.',
     renamePrompt: 'New chat name', deleteConfirm: 'Delete this chat? This cannot be undone.',
     renamed: 'Chat renamed.', deleted: 'Chat deleted.', failed: 'That did not work. See the console for details.',
+    close: 'Close chat', panelClose: '“Close chat” cross on the top bar',
     panelHome: 'Custom home (shelf)', panelNote: 'Replaces the welcome screen with a shelf of cameos. If Character Chat Pills is installed, turn it off so the two homes do not clash.',
 };
 
@@ -96,7 +101,10 @@ function toast(kind, text) {
 }
 
 /* ── state ────────────────────────────────────────────── */
-const view = { mode: 'shelf', avatar: null, query: '', archive: false, openMenu: null, chats: null };
+const view = { mode: 'shelf', avatar: null, query: '', archive: false, openMenu: null, chats: null, expanded: false };
+const FOLD_AT = 8;        // two rows of four
+const TEASER = 4;         // a faded third row hints that there is more
+const lastSnips = new Map(); // avatar -> last line of their latest chat
 const chatCounts = new Map();   // avatar -> number of chats (lazy, cached)
 
 function characterIndex(avatar) {
@@ -120,7 +128,7 @@ function cameo(c, cls = '') {
 function shelfItem(c, s) {
     const m = toMoment(Number(c.date_last_chat));
     const count = chatCounts.get(c.avatar);
-    const meta = [dayLabel(m), count != null ? count : null].filter((x) => x !== null && x !== '').join(' · ');
+    const meta = [dayLabel(m), count > 0 ? count : null].filter((x) => x !== null && x !== '').join(' · ');
     return `<button type="button" class="sc-sh" data-avatar="${esc(c.avatar)}" title="${esc(c.name)}">
         <span class="sc-wrapc">${cameo(c)}${s.pinned.includes(c.avatar) ? '<span class="sc-pin">✦</span>' : ''}${isToday(m) ? '<span class="sc-fresh"></span>' : ''}</span>
         <span class="sc-nm">${esc(c.name)}</span>
@@ -145,18 +153,27 @@ function shelfHtml() {
     if (q) list = list.filter((c) => String(c.name).toLowerCase().includes(q));
     list = sortList(list, s.filter);
 
-    const last = sortList(chattedCharacters().filter((c) => !s.archived.includes(c.avatar)), 'recent')[0];
-    const lastM = last ? toMoment(Number(last.date_last_chat)) : null;
-    const cont = !view.archive && last ? `
+    const last = lastCharacter();
+    const snip = last ? lastSnips.get(last.avatar) : '';
+    const cont = !view.archive && !q && last ? `
         <button type="button" class="sc-cont sc-hud" data-continue="${esc(last.avatar)}">
-            ${cameo(last, 'sc-cameo-xs')}
-            <span class="sc-cont-t"><b>${T.continue}</b><span>${esc(last.name)}${last.chat ? ` · ${esc(stripExt(last.chat))}` : ''}${lastM ? ` · ${esc(lastM.format('HH:mm'))}` : ''}</span></span>
+            ${cameo(last, 'sc-cameo-cont')}
+            <span class="sc-cont-t">
+                <b>${T.continue}</b>
+                <span class="sc-nm">${esc(last.name)}</span>
+                <span class="sc-cont-line">${last.chat ? esc(stripExt(last.chat)) : ''}${snip ? ` · ${esc(snip)}` : ''}</span>
+            </span>
             <span class="sc-go" aria-hidden="true">›</span>
         </button>` : '';
 
     const pinned = view.archive ? [] : list.filter((c) => s.pinned.includes(c.avatar));
     const rest = view.archive ? list : list.filter((c) => !s.pinned.includes(c.avatar));
     const empty = !chattedCharacters().length ? T.empty : !list.length ? T.noMatch : '';
+
+    // fold the main shelf to two rows unless searching, browsing the archive or expanded
+    const canFold = !q && !view.archive && rest.length > FOLD_AT;
+    const folded = canFold && !view.expanded;
+    const shown = folded ? rest.slice(0, FOLD_AT + TEASER) : rest;
 
     return `
         <div class="sc-head"><span class="sc-logo">Shadow Cherry</span><span class="sc-jp">影色のさくらんぼ</span></div>
@@ -169,8 +186,43 @@ function shelfHtml() {
             ${['recent', 'active', 'frequent'].map((f) => `<button type="button" data-filter="${f}" aria-pressed="${s.filter === f}">${T[f]}</button>`).join('')}
         </div>`}
         ${pinned.length ? `<div class="sc-orn"><span>${T.pinned}</span></div><div class="sc-shelf">${pinned.map((c) => shelfItem(c, s)).join('')}</div>` : ''}
-        ${rest.length ? `<div class="sc-orn"><span>${view.archive ? T.archived : T.all}</span></div><div class="sc-shelf">${rest.map((c) => shelfItem(c, s)).join('')}</div>` : ''}
+        ${rest.length ? `<div class="sc-orn"><span>${view.archive ? T.archived : T.all} · ${rest.length}</span></div>
+            <div class="sc-fold ${folded ? 'sc-closed' : ''}"><div class="sc-shelf">${shown.map((c) => shelfItem(c, s)).join('')}</div></div>
+            ${canFold ? `<button type="button" class="sc-btn sc-fold-btn" data-act="fold" aria-expanded="${!folded}">${folded ? T.showAll(rest.length) : T.collapse}</button>` : ''}` : ''}
         ${empty ? `<p class="sc-empty">${empty}</p>` : ''}`;
+}
+
+function lastCharacter() {
+    const s = getSettings();
+    return sortList(chattedCharacters().filter((c) => !s.archived.includes(c.avatar)), 'recent')[0];
+}
+
+// the continue bar shows a line from the last chat; fetched once per character
+async function loadLastSnip() {
+    const c = lastCharacter();
+    if (!c || lastSnips.has(c.avatar)) return;
+    lastSnips.set(c.avatar, '');
+    try {
+        const res = await fetch('/api/characters/chats', {
+            method: 'POST', headers: ctx().getRequestHeaders(),
+            body: JSON.stringify({ avatar_url: c.avatar }),
+        });
+        const data = await res.json();
+        if (!Array.isArray(data) || !data.length) return;
+        const want = `${stripExt(c.chat)}.jsonl`;
+        const time = (x) => toMoment(x.last_mes)?.valueOf() ?? 0;
+        const chat = data.find((x) => x.file_name === want) || [...data].sort((a, b) => time(b) - time(a))[0];
+        lastSnips.set(c.avatar, cleanSnip(chat?.mes, 120));
+        const line = homeEl?.querySelector('.sc-cont-line');
+        if (line && view.mode === 'shelf') line.textContent = [stripExt(c.chat), lastSnips.get(c.avatar)].filter(Boolean).join(' · ');
+    } catch { /* the bar still works without the line */ }
+}
+
+function cleanSnip(text, max = 180) {
+    return String(text || '')
+        .replace(/<[^>]*>/g, ' ')            // html tags
+        .replace(/[*_~`]+/g, '')             // markdown emphasis
+        .replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
 function chatRow(c, chat, i, isLast) {
@@ -179,10 +231,7 @@ function chatRow(c, chat, i, isLast) {
     const fav = (s.favChats[c.avatar] || []).includes(chat.file_name);
     const m = toMoment(chat.last_mes);
     const meta = [m ? `${dayLabel(m)} · ${m.format('HH:mm')}` : '', chat.chat_items ? `${chat.chat_items} ${T.mes}` : ''].filter(Boolean).join(' · ');
-    const snip = String(chat.mes || '')
-        .replace(/<[^>]*>/g, ' ')            // html tags
-        .replace(/[*_~`]+/g, '')             // markdown emphasis
-        .replace(/\s+/g, ' ').trim().slice(0, 180);
+    const snip = cleanSnip(chat.mes);
     const open = view.openMenu === i;
     return `<div class="sc-crow ${isLast ? 'sc-last' : ''}" data-file="${esc(chat.file_name)}">
         <button type="button" class="sc-crow-main" data-act="open-chat">
@@ -237,7 +286,7 @@ function render({ keepFocus = false } = {}) {
         const q = document.getElementById('sc-q');
         if (q) { q.focus(); if (caret != null) q.setSelectionRange(caret, caret); }
     }
-    if (view.mode === 'shelf') loadCounts();
+    if (view.mode === 'shelf') { loadCounts(); loadLastSnip(); }
 }
 
 async function loadCounts() {
@@ -256,7 +305,7 @@ async function loadCounts() {
             const c = characterBy(avatar);
             if (metaEl && c) {
                 const n = chatCounts.get(avatar);
-                metaEl.textContent = [dayLabel(toMoment(Number(c.date_last_chat))), n].filter((x) => x !== null && x !== '' && x !== undefined).join(' · ');
+                metaEl.textContent = [dayLabel(toMoment(Number(c.date_last_chat))), n > 0 ? n : null].filter((x) => x !== null && x !== '').join(' · ');
             }
         }));
         if (!homeEl?.isConnected) return;
@@ -430,6 +479,7 @@ function onClick(e) {
 
     switch (act) {
         case 'archive-view': view.archive = !view.archive; view.query = ''; render(); break;
+        case 'fold': view.expanded = !view.expanded; render(); break;
         case 'back': view.mode = 'shelf'; view.avatar = null; view.openMenu = null; view.chats = null; render(); document.getElementById('chat').scrollTop = 0; break;
         case 'new-chat': newChat(avatar); break;
         case 'pin': toggleIn(s.pinned, avatar); save(); render(); break;
@@ -449,6 +499,42 @@ function onInput(e) {
     render({ keepFocus: true });
 }
 
+/* ── close-chat cross on the top bar ──────────────────── */
+// Sits before the first top-bar button and shows only while a chat is open.
+// It is not a .drawer-toggle, so SillyTavern's drawer logic leaves it alone.
+function closeButton() {
+    let btn = document.getElementById('sc-close-chat');
+    if (!btn) {
+        const holder = document.getElementById('top-settings-holder');
+        if (!holder) return null;
+        btn = document.createElement('div');
+        btn.id = 'sc-close-chat';
+        btn.className = 'drawer';
+        btn.innerHTML = `<div class="sc-close-toggle drawer-header"><div class="drawer-icon closedIcon interactable" role="button" tabindex="0" title="${T.close}" aria-label="${T.close}"></div></div>`;
+        holder.prepend(btn);
+        const icon = btn.querySelector('.drawer-icon');
+        const run = async () => {
+            try {
+                const m = await st();
+                if (m?.closeCurrentChat) await m.closeCurrentChat();
+                else await ctx().executeSlashCommandsWithOptions?.('/closechat');
+            } catch (e) {
+                console.error('[Shadow Cherry] close chat failed', e);
+                toast('error', T.failed);
+            }
+        };
+        icon.addEventListener('click', run);
+        icon.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); run(); } });
+    }
+    return btn;
+}
+function updateCloseButton() {
+    const s = getSettings();
+    const btn = closeButton();
+    if (!btn) return;
+    btn.hidden = !s.closeButton || ctx().getCurrentChatId() === undefined;
+}
+
 /* ── settings panel ───────────────────────────────────── */
 function buildPanel() {
     const host = document.getElementById('extensions_settings2') || document.getElementById('extensions_settings');
@@ -466,6 +552,10 @@ function buildPanel() {
                         <span>${T.panelHome}</span>
                     </label>
                     <small class="sc-note">${T.panelNote}</small>
+                    <label class="checkbox_label" for="sc-close-on">
+                        <input id="sc-close-on" type="checkbox">
+                        <span>${T.panelClose}</span>
+                    </label>
                 </div>
             </div>
         </div>`);
@@ -473,6 +563,9 @@ function buildPanel() {
     const box = document.getElementById('sc-home-on');
     box.checked = !!s.home;
     box.addEventListener('change', () => { s.home = box.checked; save(); mount(); });
+    const closeBox = document.getElementById('sc-close-on');
+    closeBox.checked = !!s.closeButton;
+    closeBox.addEventListener('change', () => { s.closeButton = closeBox.checked; save(); updateCloseButton(); });
 }
 
 /* ── start ────────────────────────────────────────────── */
@@ -487,12 +580,13 @@ function init() {
         chatEl.addEventListener('input', onInput);
     }
     const { eventSource, eventTypes } = ctx();
-    const refresh = () => { chatCounts.clear(); if (homeEl?.isConnected) render(); else mount(); };
-    eventSource?.on?.(eventTypes.CHAT_CHANGED, () => setTimeout(mount, 0));
+    const refresh = () => { chatCounts.clear(); lastSnips.clear(); if (homeEl?.isConnected) render(); else mount(); };
+    eventSource?.on?.(eventTypes.CHAT_CHANGED, () => { lastSnips.clear(); setTimeout(() => { mount(); updateCloseButton(); }, 0); });
     eventSource?.on?.(eventTypes.CHARACTER_EDITED, refresh);
     eventSource?.on?.(eventTypes.CHARACTER_DELETED, refresh);
     eventSource?.on?.(eventTypes.CHAT_DELETED, refresh);
     mount();
+    updateCloseButton();
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

@@ -1,13 +1,13 @@
 {
     "display_name": "✦ Shadow Cherry",
-    "description": "Shadow Cherry home: replaces the welcome screen with a shelf of character cameos — continue, pin, archive, search, filters and per-character chats.",
+    "description": "Shadow Cherry home: a folded shelf of character cameos with continue, pin, archive, search and filters, plus a “close chat” cross on the top bar.",
     "loading_order": 200,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "css": "style.css",
     "author": "ewwn1h",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "auto_update": true,
     "homePage": "https://github.com/kkyanlx/ST-ShadowCherry"
 }
