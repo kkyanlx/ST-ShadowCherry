@@ -1,6 +1,6 @@
 # ✦ Shadow Cherry · Home
 
-*影色のさくらんぼ · fog, ash & porcelain rose*
+*影色のさくらんぼ*
 
 Главная страница для темы **Shadow Cherry** в [SillyTavern](https://github.com/SillyTavern/SillyTavern): вместо списка недавних чатов полка с камеями персонажей.
 Сама тема живёт в пресете [Moonlit Echoes](https://github.com/RivelleDays/SillyTavern-MoonlitEchoesTheme), а это расширение отвечает только за главную.
