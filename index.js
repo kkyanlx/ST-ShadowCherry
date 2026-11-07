@@ -3,7 +3,8 @@
     a SillyTavern extension by ewwn1h
 
     Replaces the welcome screen with a shelf of character cameos.
-    Tap a cameo to see that character's chats; pin, archive, search, filter.
+    Rows that scroll sideways: pinned, recent, frequent, everyone.
+    Tap a cameo to see that character's chats; pin, archive, search.
     The theme itself lives in the Moonlit Echoes preset.
 */
 
@@ -40,13 +41,13 @@ const RU = (() => {
 })();
 const T = RU ? {
     continue: 'продолжить', search: 'поиск персонажей…', archive: 'архив', back: '‹ назад',
-    recent: 'недавние', active: 'активные', frequent: 'частые',
+    recent: 'недавние', frequent: 'частые', name: 'а–я', seeAll: 'все →', found: 'нашлось',
+    chatFrom: (d) => `чат от ${d}`,
     pinned: '✦ закреплённые', all: 'все', archived: 'архив', empty: 'Пока здесь пусто. Начните чат с кем-нибудь из персонажей.',
     noMatch: 'Никого не нашлось.', today: 'сегодня', yesterday: 'вчера',
     chats: n => `${n} ${n % 10 === 1 && n % 100 !== 11 ? 'чат' : [2, 3, 4].includes(n % 10) && ![12, 13, 14].includes(n % 100) ? 'чата' : 'чатов'}`,
     mes: 'mes', newChat: '+ новый чат', pin: '✦ закрепить', unpin: '✦ открепить', toArchive: 'в архив', fromArchive: 'из архива',
     last: '✦ last', rename: 'переименовать', fav: '✦ избранное', unfav: '✦ убрать', download: 'скачать', del: 'удалить',
-    showAll: (n) => `показать всех · ${n}`, collapse: 'свернуть',
     more: 'ещё', loading: 'загружаю чаты…', noChats: 'У этого персонажа пока нет чатов.',
     renamePrompt: 'Новое название чата', deleteConfirm: 'Удалить этот чат? Вернуть его не получится.',
     renamed: 'Чат переименован.', deleted: 'Чат удалён.', failed: 'Не получилось. Подробности в консоли.',
@@ -54,13 +55,13 @@ const T = RU ? {
     panelHome: 'Своя главная (полка)', panelNote: 'Заменяет стартовый экран полкой с камеями. Если стоит Character Chat Pills, отключите его, чтобы главные не спорили.',
 } : {
     continue: 'continue', search: 'search characters…', archive: 'archive', back: '‹ back',
-    recent: 'recent', active: 'active', frequent: 'frequent',
+    recent: 'recent', frequent: 'frequent', name: 'a–z', seeAll: 'all →', found: 'found',
+    chatFrom: (d) => `chat from ${d}`,
     pinned: '✦ pinned', all: 'all', archived: 'archive', empty: 'Nothing here yet. Start a chat with one of your characters.',
     noMatch: 'No one found.', today: 'today', yesterday: 'yesterday',
     chats: n => `${n} chat${n === 1 ? '' : 's'}`,
     mes: 'mes', newChat: '+ new chat', pin: '✦ pin', unpin: '✦ unpin', toArchive: 'archive', fromArchive: 'unarchive',
     last: '✦ last', rename: 'rename', fav: '✦ favourite', unfav: '✦ unfavourite', download: 'download', del: 'delete',
-    showAll: (n) => `show all · ${n}`, collapse: 'collapse',
     more: 'more', loading: 'loading chats…', noChats: 'This character has no chats yet.',
     renamePrompt: 'New chat name', deleteConfirm: 'Delete this chat? This cannot be undone.',
     renamed: 'Chat renamed.', deleted: 'Chat deleted.', failed: 'That did not work. See the console for details.',
@@ -71,6 +72,15 @@ const T = RU ? {
 /* ── helpers ──────────────────────────────────────────── */
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const stripExt = (name) => String(name || '').replace(/\.jsonl$/i, '');
+
+// SillyTavern names new chats "Name - 2026-10-21@01h24m59s"; show those as a date instead
+const AUTO_NAME = /^.* - (\d{4})-(\d{2})-(\d{2}) ?@(\d{2})h ?(\d{2})m ?(\d{2})s(?: ?\d+ms)?$/;
+function chatTitle(file) {
+    const name = stripExt(file);
+    const m = name.match(AUTO_NAME);
+    if (!m) return { text: name, auto: false };
+    return { text: T.chatFrom(`${m[3]}.${m[2]}.${m[1].slice(2)}, ${m[4]}:${m[5]}`), auto: true };
+}
 
 function toMoment(value) {
     try {
@@ -101,9 +111,9 @@ function toast(kind, text) {
 }
 
 /* ── state ────────────────────────────────────────────── */
-const view = { mode: 'shelf', avatar: null, query: '', archive: false, openMenu: null, chats: null, expanded: false };
-const FOLD_AT = 8;        // two rows of four
-const TEASER = 4;         // a faded third row hints that there is more
+// mode: 'shelf' (rows) · 'all' (everyone, as a grid) · 'page' (one character's chats)
+const view = { mode: 'shelf', prev: 'shelf', avatar: null, query: '', archive: false, openMenu: null, chats: null };
+const ROW_MAX = 12;       // cameos per sideways row before "all →"
 const lastSnips = new Map(); // avatar -> last line of their latest chat
 const chatCounts = new Map();   // avatar -> number of chats (lazy, cached)
 
@@ -125,11 +135,11 @@ function cameo(c, cls = '') {
     return `<span class="sc-cameo ${cls}">${hasImg ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async">` : `<span class="sc-ini">${initial}</span>`}</span>`;
 }
 
-function shelfItem(c, s) {
+function shelfItem(c, s, big = false) {
     const m = toMoment(Number(c.date_last_chat));
     const count = chatCounts.get(c.avatar);
     const meta = [dayLabel(m), count > 0 ? count : null].filter((x) => x !== null && x !== '').join(' · ');
-    return `<button type="button" class="sc-sh" data-avatar="${esc(c.avatar)}" title="${esc(c.name)}">
+    return `<button type="button" class="sc-sh ${big ? 'sc-big' : ''}" data-avatar="${esc(c.avatar)}" title="${esc(c.name)}">
         <span class="sc-wrapc">${cameo(c)}${s.pinned.includes(c.avatar) ? '<span class="sc-pin">✦</span>' : ''}${isToday(m) ? '<span class="sc-fresh"></span>' : ''}</span>
         <span class="sc-nm">${esc(c.name)}</span>
         <span class="sc-meta" data-meta-for="${esc(c.avatar)}">${esc(meta)}</span>
@@ -139,57 +149,87 @@ function shelfItem(c, s) {
 function sortList(list, filter) {
     const byDate = (a, b) => Number(b.date_last_chat) - Number(a.date_last_chat);
     if (filter === 'frequent') return [...list].sort((a, b) => Number(b.chat_size || 0) - Number(a.chat_size || 0) || byDate(a, b));
-    if (filter === 'active') {
-        const week = Date.now() - 7 * 24 * 3600 * 1000;
-        return list.filter((c) => Number(c.date_last_chat) >= week).sort(byDate);
-    }
+    if (filter === 'name') return [...list].sort((a, b) => String(a.name).localeCompare(String(b.name)) || byDate(a, b));
     return [...list].sort(byDate);
 }
 
-function shelfHtml() {
-    const s = getSettings();
-    const q = view.query.trim().toLowerCase();
-    let list = chattedCharacters().filter((c) => view.archive ? s.archived.includes(c.avatar) : !s.archived.includes(c.avatar));
-    if (q) list = list.filter((c) => String(c.name).toLowerCase().includes(q));
-    list = sortList(list, s.filter);
-
+function continueHtml() {
     const last = lastCharacter();
-    const snip = last ? lastSnips.get(last.avatar) : '';
-    const cont = !view.archive && !q && last ? `
+    if (!last) return '';
+    const title = chatTitle(last.chat);
+    const snip = lastSnips.get(last.avatar) || '';
+    const line = [title.auto ? '' : title.text, snip].filter(Boolean).join(' · ');
+    return `
         <button type="button" class="sc-cont sc-hud" data-continue="${esc(last.avatar)}">
             ${cameo(last, 'sc-cameo-cont')}
             <span class="sc-cont-t">
                 <b>${T.continue}</b>
                 <span class="sc-nm">${esc(last.name)}</span>
-                <span class="sc-cont-line">${last.chat ? esc(stripExt(last.chat)) : ''}${snip ? ` · ${esc(snip)}` : ''}</span>
+                <span class="sc-cont-line">${esc(line)}</span>
             </span>
             <span class="sc-go" aria-hidden="true">›</span>
-        </button>` : '';
+        </button>`;
+}
 
-    const pinned = view.archive ? [] : list.filter((c) => s.pinned.includes(c.avatar));
-    const rest = view.archive ? list : list.filter((c) => !s.pinned.includes(c.avatar));
-    const empty = !chattedCharacters().length ? T.empty : !list.length ? T.noMatch : '';
+function headHtml() {
+    return `<div class="sc-head"><span class="sc-logo">Shadow Cherry</span><span class="sc-jp">影色のさくらんぼ</span></div>`;
+}
 
-    // fold the main shelf to two rows unless searching, browsing the archive or expanded
-    const canFold = !q && !view.archive && rest.length > FOLD_AT;
-    const folded = canFold && !view.expanded;
-    const shown = folded ? rest.slice(0, FOLD_AT + TEASER) : rest;
-
-    return `
-        <div class="sc-head"><span class="sc-logo">Shadow Cherry</span><span class="sc-jp">影色のさくらんぼ</span></div>
-        ${cont}
-        <div class="sc-tools">
+function toolsHtml() {
+    return `<div class="sc-tools">
             <label class="sc-search"><span aria-hidden="true">⌕</span><input type="search" id="sc-q" placeholder="${T.search}" value="${esc(view.query)}" autocomplete="off"></label>
             <button type="button" class="sc-btn ${view.archive ? 'sc-on' : ''}" data-act="archive-view">${view.archive ? T.back : T.archive}</button>
+        </div>`;
+}
+
+const rowHtml = (label, list, s, { big = false, all = false } = {}) => !list.length ? '' : `
+    <div class="sc-sec"><span>${label}</span>${all ? `<button type="button" class="sc-link" data-act="all">${T.seeAll}</button>` : ''}</div>
+    <div class="sc-strip">${list.map((c) => shelfItem(c, s, big)).join('')}</div>`;
+
+const gridHtml = (list, s) => `<div class="sc-shelf">${list.map((c) => shelfItem(c, s)).join('')}</div>`;
+
+function shelfHtml() {
+    const s = getSettings();
+    const q = view.query.trim().toLowerCase();
+    const active = chattedCharacters().filter((c) => !s.archived.includes(c.avatar));
+    let body;
+
+    if (view.archive) {
+        const list = sortList(chattedCharacters().filter((c) => s.archived.includes(c.avatar)), 'recent')
+            .filter((c) => !q || String(c.name).toLowerCase().includes(q));
+        body = list.length
+            ? `<div class="sc-sec"><span>${T.archived} · ${list.length}</span></div>${gridHtml(list, s)}`
+            : `<p class="sc-empty">${T.noMatch}</p>`;
+    } else if (q) {
+        const list = sortList(active.filter((c) => String(c.name).toLowerCase().includes(q)), 'recent');
+        body = list.length
+            ? `<div class="sc-sec"><span>${T.found} · ${list.length}</span></div>${gridHtml(list, s)}`
+            : `<p class="sc-empty">${T.noMatch}</p>`;
+    } else if (!active.length) {
+        body = `<p class="sc-empty">${T.empty}</p>`;
+    } else {
+        const pinned = sortList(active.filter((c) => s.pinned.includes(c.avatar)), 'recent');
+        const others = active.filter((c) => !s.pinned.includes(c.avatar));
+        body = rowHtml(T.pinned, pinned, s, { big: true })
+            + rowHtml(T.recent, sortList(others, 'recent').slice(0, ROW_MAX), s)
+            + (active.length > 4 ? rowHtml(T.frequent, sortList(active, 'frequent').slice(0, ROW_MAX), s) : '')
+            + rowHtml(`${T.all} · ${active.length}`, sortList(active, 'name').slice(0, ROW_MAX), s, { all: true });
+    }
+
+    return headHtml() + (view.archive || q ? '' : continueHtml()) + toolsHtml() + body;
+}
+
+function allHtml() {
+    const s = getSettings();
+    const sort = ['recent', 'frequent', 'name'].includes(s.filter) ? s.filter : 'recent';
+    const list = sortList(chattedCharacters().filter((c) => !s.archived.includes(c.avatar)), sort);
+    return `
+        <button type="button" class="sc-back" data-act="back">${T.back}</button>
+        <div class="sc-sec"><span>${T.all} · ${list.length}</span></div>
+        <div class="sc-chips" role="group">
+            ${['recent', 'frequent', 'name'].map((f) => `<button type="button" data-filter="${f}" aria-pressed="${sort === f}">${T[f]}</button>`).join('')}
         </div>
-        ${view.archive ? '' : `<div class="sc-chips" role="group">
-            ${['recent', 'active', 'frequent'].map((f) => `<button type="button" data-filter="${f}" aria-pressed="${s.filter === f}">${T[f]}</button>`).join('')}
-        </div>`}
-        ${pinned.length ? `<div class="sc-orn"><span>${T.pinned}</span></div><div class="sc-shelf">${pinned.map((c) => shelfItem(c, s)).join('')}</div>` : ''}
-        ${rest.length ? `<div class="sc-orn"><span>${view.archive ? T.archived : T.all} · ${rest.length}</span></div>
-            <div class="sc-fold ${folded ? 'sc-closed' : ''}"><div class="sc-shelf">${shown.map((c) => shelfItem(c, s)).join('')}</div></div>
-            ${canFold ? `<button type="button" class="sc-btn sc-fold-btn" data-act="fold" aria-expanded="${!folded}">${folded ? T.showAll(rest.length) : T.collapse}</button>` : ''}` : ''}
-        ${empty ? `<p class="sc-empty">${empty}</p>` : ''}`;
+        ${gridHtml(list, s)}`;
 }
 
 function lastCharacter() {
@@ -214,7 +254,8 @@ async function loadLastSnip() {
         const chat = data.find((x) => x.file_name === want) || [...data].sort((a, b) => time(b) - time(a))[0];
         lastSnips.set(c.avatar, cleanSnip(chat?.mes, 120));
         const line = homeEl?.querySelector('.sc-cont-line');
-        if (line && view.mode === 'shelf') line.textContent = [stripExt(c.chat), lastSnips.get(c.avatar)].filter(Boolean).join(' · ');
+        const title = chatTitle(c.chat);
+        if (line && view.mode === 'shelf') line.textContent = [title.auto ? '' : title.text, lastSnips.get(c.avatar)].filter(Boolean).join(' · ');
     } catch { /* the bar still works without the line */ }
 }
 
@@ -227,7 +268,7 @@ function cleanSnip(text, max = 180) {
 
 function chatRow(c, chat, i, isLast) {
     const s = getSettings();
-    const name = stripExt(chat.file_name);
+    const title = chatTitle(chat.file_name);
     const fav = (s.favChats[c.avatar] || []).includes(chat.file_name);
     const m = toMoment(chat.last_mes);
     const meta = [m ? `${dayLabel(m)} · ${m.format('HH:mm')}` : '', chat.chat_items ? `${chat.chat_items} ${T.mes}` : ''].filter(Boolean).join(' · ');
@@ -235,7 +276,7 @@ function chatRow(c, chat, i, isLast) {
     const open = view.openMenu === i;
     return `<div class="sc-crow ${isLast ? 'sc-last' : ''}" data-file="${esc(chat.file_name)}">
         <button type="button" class="sc-crow-main" data-act="open-chat">
-            <span class="sc-crow-t">${fav ? '<span class="sc-star">✦</span>' : ''}<span>${esc(name)}</span>${isLast ? `<span class="sc-tag">${T.last}</span>` : ''}</span>
+            <span class="sc-crow-t">${fav ? '<span class="sc-star">✦</span>' : ''}<span class="${title.auto ? 'sc-auto' : ''}">${esc(title.text)}</span>${isLast ? `<span class="sc-tag">${T.last}</span>` : ''}</span>
             ${meta ? `<span class="sc-meta">${esc(meta)}</span>` : ''}
             ${snip ? `<span class="sc-snip">${esc(snip)}</span>` : ''}
         </button>
@@ -281,12 +322,13 @@ function render({ keepFocus = false } = {}) {
     if (!homeEl || !homeEl.isConnected) return;
     const caret = keepFocus ? document.getElementById('sc-q')?.selectionStart : null;
     homeEl.dataset.mode = view.mode;
-    homeEl.innerHTML = view.mode === 'page' ? pageHtml() : shelfHtml();
+    homeEl.innerHTML = view.mode === 'page' ? pageHtml() : view.mode === 'all' ? allHtml() : shelfHtml();
     if (keepFocus) {
         const q = document.getElementById('sc-q');
         if (q) { q.focus(); if (caret != null) q.setSelectionRange(caret, caret); }
     }
-    if (view.mode === 'shelf') { loadCounts(); loadLastSnip(); }
+    if (view.mode !== 'page') loadCounts();
+    if (view.mode === 'shelf') loadLastSnip();
 }
 
 async function loadCounts() {
@@ -301,12 +343,12 @@ async function loadCounts() {
                 const data = await res.json();
                 chatCounts.set(avatar, Array.isArray(data) ? data.length : 0);
             } catch { chatCounts.set(avatar, null); }
-            const metaEl = homeEl?.querySelector(`[data-meta-for="${CSS.escape(avatar)}"]`);
+            // the same character can sit in several rows at once
             const c = characterBy(avatar);
-            if (metaEl && c) {
-                const n = chatCounts.get(avatar);
-                metaEl.textContent = [dayLabel(toMoment(Number(c.date_last_chat))), n > 0 ? n : null].filter((x) => x !== null && x !== '').join(' · ');
-            }
+            const n = chatCounts.get(avatar);
+            homeEl?.querySelectorAll(`[data-meta-for="${CSS.escape(avatar)}"]`).forEach((metaEl) => {
+                if (c) metaEl.textContent = [dayLabel(toMoment(Number(c.date_last_chat))), n > 0 ? n : null].filter((x) => x !== null && x !== '').join(' · ');
+            });
         }));
         if (!homeEl?.isConnected) return;
     }
@@ -456,6 +498,7 @@ function onClick(e) {
 
     const sh = e.target.closest('.sc-sh');
     if (sh) {
+        view.prev = view.mode === 'all' ? 'all' : 'shelf';
         view.mode = 'page'; view.avatar = sh.dataset.avatar; view.openMenu = null;
         document.getElementById('chat').scrollTop = 0;
         loadChats(view.avatar);
@@ -479,8 +522,8 @@ function onClick(e) {
 
     switch (act) {
         case 'archive-view': view.archive = !view.archive; view.query = ''; render(); break;
-        case 'fold': view.expanded = !view.expanded; render(); break;
-        case 'back': view.mode = 'shelf'; view.avatar = null; view.openMenu = null; view.chats = null; render(); document.getElementById('chat').scrollTop = 0; break;
+        case 'all': view.mode = 'all'; render(); document.getElementById('chat').scrollTop = 0; break;
+        case 'back': view.mode = view.mode === 'page' ? view.prev : 'shelf'; view.prev = 'shelf'; view.avatar = null; view.openMenu = null; view.chats = null; render(); document.getElementById('chat').scrollTop = 0; break;
         case 'new-chat': newChat(avatar); break;
         case 'pin': toggleIn(s.pinned, avatar); save(); render(); break;
         case 'archive': toggleIn(s.archived, avatar); save(); render(); break;

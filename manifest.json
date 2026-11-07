@@ -1,13 +1,13 @@
 {
     "display_name": "✦ Shadow Cherry",
-    "description": "Shadow Cherry home: a folded shelf of character cameos with continue, pin, archive, search and filters, plus a “close chat” cross on the top bar.",
+    "description": "Shadow Cherry home: sideways rows of character cameos (pinned, recent, frequent, everyone) with continue, search and archive, plus a “close chat” cross on the top bar.",
     "loading_order": 200,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "css": "style.css",
     "author": "ewwn1h",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "auto_update": true,
     "homePage": "https://github.com/kkyanlx/ST-ShadowCherry"
 }

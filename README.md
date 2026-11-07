@@ -11,10 +11,10 @@ by **ewwn1h** ♡
 
 ## Что умеет
 
-- **Полка**: персонажи, с которыми есть чаты, по четыре в ряд. Свёрнута до двух рядов, остальные открываются кнопкой «показать всех», при поиске раскрывается сама. Под камеей дата последнего чата и сколько всего чатов. У тех, с кем писали сегодня, светится точка.
+- **Ленты**: «✦ закреплённые» (крупно), «недавние», «частые» и «все» листаются вбок, по одной строке на раздел, так что главная не растягивается вниз, сколько бы ни было персонажей. «все →» открывает полный список сеткой с сортировкой *недавние / частые / а–я*. Под камеей дата последнего чата и сколько всего чатов, у тех, с кем писали сегодня, светится точка.
 - **Продолжить**: плашка сверху с кусочком последней реплики, открывает последний чат в одно касание.
-- **Поиск** по имени и фильтры: *недавние*, *активные* (последние 7 дней), *частые*.
-- **Страница персонажа**: нажмите на камею, откроются все его чаты с отметкой последнего. Там же *+ новый чат*, *закрепить* и *в архив*.
+- **Поиск** по имени: результаты показываются сеткой.
+- **Страница персонажа**: нажмите на камею, откроются все его чаты с отметкой последнего. Автоматические названия вида `Name - 2026-10-21@01h24m59s` показываются как «чат от 21.10.26, 01:24». Там же *+ новый чат*, *закрепить* и *в архив*.
 - **У каждого чата под «⋯»**: переименовать, в избранное (поднимается наверх со звёздочкой), скачать `.jsonl`, удалить.
 - **Закреплённые** стоят отдельным разделом сверху. **Архив** прячет персонажа с полки, но чаты и файлы не трогает. Кнопка «архив» рядом с поиском показывает спрятанных.
 
@@ -41,7 +41,7 @@ Extensions → Manage extensions → обновить **✦ Shadow Cherry**.
 
 ## English
 
-A home screen for the Shadow Cherry theme: a folded four-per-row shelf of character cameos instead of SillyTavern's recent-chats list, plus a “close chat” cross on the top bar.
-Continue the last chat in one tap, search, filter (recent / active / frequent), pin, archive, and open a character
+A home screen for the Shadow Cherry theme: sideways rows of character cameos (pinned, recent, frequent, everyone) instead of SillyTavern's recent-chats list, plus a “close chat” cross on the top bar.
+Continue the last chat in one tap, search, browse everyone sorted by recent / frequent / a–z, pin, archive, and open a character
 to see all their chats with rename, favourite, download and delete. Uses SillyTavern's own functions for every chat action.
 Turn off Character Chat Pills if you use it. Toggle under Extensions → ✦ Shadow Cherry.
