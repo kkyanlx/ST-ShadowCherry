@@ -235,6 +235,29 @@
 @media (max-width: 360px) {
     #sc-home .sc-sh .sc-cameo { width: 52px; height: 66px; }
 }
+/* a wide screen: the home fills the chat column instead of a phone-width strip */
+@media (min-width: 1000px) {
+    #sc-home { max-width: 940px; padding: 22px 20px 36px; gap: 18px; }
+    #sc-home .sc-body { gap: 18px; }
+    #sc-home .sc-logo { font-size: 2.3rem; }
+    #sc-home .sc-jp { font-size: .74rem; }
+    #sc-home .sc-moon { font-size: .6rem; }
+    #sc-home .sc-cont { padding: 14px 18px; gap: 16px; }
+    #sc-home .sc-cameo-cont { width: 50px; height: 62px; }
+    #sc-home .sc-cont-t .sc-nm { font-size: 1.45em; }
+    #sc-home .sc-cont-line { font-size: .9rem; }
+    #sc-home .sc-search input { padding: 9px 0; }
+    #sc-home .sc-strip { gap: 18px; padding-right: 40px; -webkit-mask: linear-gradient(90deg, #000 calc(100% - 48px), transparent); mask: linear-gradient(90deg, #000 calc(100% - 48px), transparent); }
+    #sc-home .sc-strip .sc-sh { width: 82px; }
+    #sc-home .sc-strip .sc-sh .sc-cameo { width: 74px; height: 95px; }
+    #sc-home .sc-strip .sc-sh.sc-big { width: 104px; }
+    #sc-home .sc-strip .sc-sh.sc-big .sc-cameo { width: 96px; height: 123px; }
+    #sc-home .sc-shelf { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 20px 10px; }
+    #sc-home .sc-sh .sc-cameo { width: 68px; height: 87px; }
+    #sc-home .sc-sh .sc-meta { font-size: .62rem; }
+    #sc-home .sc-dh .sc-nm { font-size: 2em; }
+    #sc-home .sc-cameo-sm { width: 44px; height: 56px; }
+}
 /* motion, only for those who have not asked for less of it: the home rises in
    when it appears, and the "talked today" dot breathes */
 @media (prefers-reduced-motion: no-preference) {
