@@ -17,6 +17,7 @@ const DEFAULTS = Object.freeze({
     closeButton: true,
     dropCap: true,         // big first letter in the character's messages
     typing: true,          // "is typing": cameo and stars under the last message
+    tags: true,            // a row of the characters' tags under the search box
     hint: null,            // text in the empty message box; null = ours, '' = nothing
     filter: 'recent',      // sort order of the "all" view: recent · frequent · name
 });
@@ -63,6 +64,7 @@ const T = RU ? {
     panelHome: 'Своя главная (полка)', panelDropCap: 'Буквица в сообщениях персонажа',
     panelTyping: 'Камея «пишет…» под последним сообщением', typing: (n) => `${n} пишет…`,
     panelHint: 'Подсказка в поле ввода', hint: 'шепни в туман…', hintEmpty: 'пусто — без подсказки',
+    tagged: 'по тегам', clearTags: 'сбросить ×', tagsLabel: 'теги', panelTags: 'Теги персонажей на полке',
     chatSearch: 'найти в чатах…', searching: 'ищу…', noHits: 'Ничего не нашлось.', moreChats: 'ещё чаты',
     hitsMore: (n) => `и ещё ${n}`, inTitle: 'совпадение в названии или в скрытом тексте',
     draw: 'вытянуть карту', openChat: 'открыть чат', startChat: 'начать чат', drawAgain: 'ещё карту', closeT: 'закрыть',
@@ -97,6 +99,7 @@ const T = RU ? {
     panelHome: 'Custom home (shelf)', panelDropCap: 'Drop cap in the character’s messages',
     panelTyping: '“Is typing” cameo under the last message', typing: (n) => `${n} is typing…`,
     panelHint: 'Message box hint', hint: 'whisper into the fog…', hintEmpty: 'empty means no hint',
+    tagged: 'by tags', clearTags: 'clear ×', tagsLabel: 'tags', panelTags: 'Character tags on the shelf',
     chatSearch: 'search in chats…', searching: 'searching…', noHits: 'Nothing found.', moreChats: 'more chats',
     hitsMore: (n) => `and ${n} more`, inTitle: 'matched in the name or in hidden text',
     draw: 'draw a card', openChat: 'open chat', startChat: 'start a chat', drawAgain: 'draw again', closeT: 'close',
@@ -183,7 +186,7 @@ function toast(kind, text) {
 
 /* ── state ────────────────────────────────────────────── */
 // mode: 'shelf' (rows) · 'all' (everyone, as a grid) · 'page' (one character's chats)
-const view = { mode: 'shelf', prev: 'shelf', avatar: null, query: '', archive: false, openMenu: null, chats: null, chatQuery: '', found: null };
+const view = { mode: 'shelf', prev: 'shelf', avatar: null, query: '', tags: [], archive: false, openMenu: null, chats: null, chatQuery: '', found: null };
 const ROW_MAX = 12;       // cameos per sideways row; "frequent" and "all" appear once there are more
 const lastSnips = new Map(); // avatar -> last line of their latest chat
 const chatCounts = new Map();   // avatar -> number of chats (lazy, cached)
@@ -198,6 +201,28 @@ function characterBy(avatar) {
 const hasChats = (c) => Number(c?.date_last_chat) > 0;
 function chattedCharacters() {
     return ctx().characters.filter((c) => c && hasChats(c));
+}
+
+/* ── tags ─────────────────────────────────────────────── */
+// SillyTavern keeps the tags in a list and, for each character's avatar, the ids of its tags
+function tagBook() {
+    const { tags, tagMap } = ctx();
+    const byId = new Map((Array.isArray(tags) ? tags : []).filter((t) => t && t.id !== undefined && t.name).map((t) => [String(t.id), t]));
+    const of = (c) => [...new Set((tagMap?.[c?.avatar] || []).map(String))].filter((id) => byId.has(id));
+    return { byId, of };
+}
+const tagsOn = () => !!getSettings().tags;
+
+// the tags present on the characters in view, the most used first
+function tagRowHtml(list) {
+    if (!tagsOn()) return '';
+    const book = tagBook();
+    const count = new Map();
+    for (const c of list) for (const id of book.of(c)) count.set(id, (count.get(id) || 0) + 1);
+    for (const id of view.tags) if (!count.has(id) && book.byId.has(id)) count.set(id, 0);
+    if (!count.size) return '';
+    const ids = [...count.keys()].sort((a, b) => count.get(b) - count.get(a) || String(book.byId.get(a).name).localeCompare(String(book.byId.get(b).name)));
+    return `<div class="sc-tagrow" role="group" aria-label="${T.tagsLabel}">${ids.map((id) => `<button type="button" data-tag="${esc(id)}" aria-pressed="${view.tags.includes(id)}">${esc(book.byId.get(id).name)}<span class="sc-tag-n">${count.get(id)}</span></button>`).join('')}</div>`;
 }
 
 /* ── markup pieces ────────────────────────────────────── */
@@ -279,7 +304,18 @@ const emptyHtml = (text) => `<p class="sc-empty">${text}</p>`;
 function shelfBody() {
     const s = getSettings();
     const q = view.query.trim().toLowerCase();
-    const matches = (c) => !q || String(c.name).toLowerCase().includes(q);
+    const book = tagBook();
+    if (!tagsOn()) view.tags = [];
+    view.tags = view.tags.filter((id) => book.byId.has(id));
+    const sel = view.tags;
+    // the name, or one of the character's tags, holds what was typed; and every chosen tag is there
+    const matches = (c) => {
+        const ids = book.of(c);
+        if (!sel.every((id) => ids.includes(id))) return false;
+        if (!q) return true;
+        return String(c.name).toLowerCase().includes(q)
+            || (tagsOn() && ids.some((id) => String(book.byId.get(id).name).toLowerCase().includes(q)));
+    };
     const everyone = ctx().characters.filter(Boolean);
     const shown = everyone.filter((c) => !s.archived.includes(c.avatar));
 
@@ -287,13 +323,15 @@ function shelfBody() {
         const list = chattedFirst(everyone.filter((c) => s.archived.includes(c.avatar) && matches(c)));
         return list.length
             ? `<div class="sc-sec"><span>${T.archived} · ${list.length}</span></div>${gridHtml(list, s)}`
-            : emptyHtml(q ? T.noMatch : T.noArchive);
+            : emptyHtml(q || sel.length ? T.noMatch : T.noArchive);
     }
-    if (q) {
+    if (q || sel.length) {
         const list = chattedFirst(shown.filter(matches));
+        const label = sel.length ? T.tagged : T.found;
+        const reset = sel.length ? `<button type="button" class="sc-link" data-act="clear-tags">${T.clearTags}</button>` : '';
         return list.length
-            ? `<div class="sc-sec"><span>${T.found} · ${list.length}</span></div>${gridHtml(list, s)}`
-            : emptyHtml(T.noMatch);
+            ? `<div class="sc-sec"><span>${label} · ${list.length}</span>${reset}</div>${gridHtml(list, s)}`
+            : `<div class="sc-sec"><span>${label} · 0</span>${reset}</div>${emptyHtml(T.noMatch)}`;
     }
     if (!shown.length) return emptyHtml(T.empty);
 
@@ -313,10 +351,12 @@ function shelfBody() {
 }
 
 let bodyDrawn = '';       // last html of the rows, to skip redraws that change nothing
+const narrowed = () => view.archive || !!view.query.trim() || view.tags.length > 0;
 function shelfHtml() {
-    const searching = view.archive || !!view.query.trim();
     bodyDrawn = shelfBody();
-    return headHtml() + continueHtml(searching) + toolsHtml() + `<div class="sc-body">${bodyDrawn}</div>`;
+    const s = getSettings();
+    const pool = ctx().characters.filter((c) => c && s.archived.includes(c.avatar) === view.archive);
+    return headHtml() + continueHtml(narrowed()) + toolsHtml() + tagRowHtml(pool) + `<div class="sc-body">${bodyDrawn}</div>`;
 }
 
 function allHtml() {
@@ -412,6 +452,13 @@ function chatsBody(c) {
     return chatQueryActive() ? foundHtml(c) : chatListHtml(c);
 }
 
+function pageTagsHtml(c) {
+    if (!tagsOn()) return '';
+    const book = tagBook();
+    const ids = book.of(c);
+    return ids.length ? `<div class="sc-tagrow sc-ptags">${ids.map((id) => `<button type="button" data-tag="${esc(id)}" data-go="1">${esc(book.byId.get(id).name)}</button>`).join('')}</div>` : '';
+}
+
 function pageHtml() {
     const s = getSettings();
     const c = characterBy(view.avatar);
@@ -426,6 +473,7 @@ function pageHtml() {
         <button type="button" class="sc-back" data-act="back">${T.back}</button>
         <div class="sc-dh">${cameo(c, 'sc-cameo-sm')}<span class="sc-nm">${esc(c.name)}</span>
             <button type="button" class="sc-btn sc-fill" data-act="new-chat">${T.newChat}</button></div>
+        ${pageTagsHtml(c)}
         <div class="sc-dh-tools">
             <button type="button" class="sc-btn ${pinned ? 'sc-on' : ''}" data-act="pin">${pinned ? T.unpin : T.pin}</button>
             <button type="button" class="sc-btn ${archived ? 'sc-on' : ''}" data-act="archive">${archived ? T.fromArchive : T.toArchive}</button>
@@ -618,7 +666,7 @@ function renderBody({ onlyIfChanged = false } = {}) {
     bodyDrawn = html;
     body.innerHTML = html;
     const cont = homeEl.querySelector('.sc-cont');
-    if (cont) cont.hidden = view.archive || !!view.query.trim();
+    if (cont) cont.hidden = narrowed();
     loadCounts();
 }
 
@@ -854,6 +902,9 @@ function onClick(e) {
     const cont = e.target.closest('[data-continue]');
     if (cont) { const c = characterBy(cont.dataset.continue); if (c) openCharacterChatFile(c.avatar, c.chat); return; }
 
+    const tagEl = e.target.closest('[data-tag]');
+    if (tagEl) { pickTag(tagEl.dataset.tag, !!tagEl.dataset.go); return; }
+
     const chip = e.target.closest('[data-filter]');
     if (chip) { s.filter = chip.dataset.filter; save(); render(); return; }
 
@@ -868,7 +919,8 @@ function onClick(e) {
     const avatar = view.avatar;
 
     switch (act) {
-        case 'archive-view': view.archive = !view.archive; view.query = ''; render(); break;
+        case 'archive-view': view.archive = !view.archive; view.query = ''; view.tags = []; render(); break;
+        case 'clear-tags': view.tags = []; syncTagRow(); renderBody(); break;
         case 'all': view.mode = 'all'; render(); document.getElementById('chat').scrollTop = 0; break;
         case 'back': view.mode = view.mode === 'page' ? view.prev : 'shelf'; view.prev = 'shelf'; view.avatar = null; view.openMenu = null; view.chats = null; view.chatQuery = ''; view.found = null; searchSeq++; render(); document.getElementById('chat').scrollTop = 0; break;
         case 'new-chat': newChat(avatar); break;
@@ -884,6 +936,27 @@ function onClick(e) {
         case 'more-found': if (view.found) { view.found.shown += FOUND_STEP; drawChats(); loadLines(searchSeq); } break;
         case 'draw': openTarot(); break;
     }
+}
+
+// a tag on the shelf narrows it (several tags: characters with all of them);
+// a tag on a character's page goes back to the shelf showing that one tag
+function pickTag(id, go) {
+    if (go) {
+        view.mode = 'shelf'; view.prev = 'shelf'; view.avatar = null; view.openMenu = null; view.chats = null;
+        view.chatQuery = ''; view.found = null; searchSeq++;
+        view.archive = false; view.query = ''; view.tags = [id];
+        render();
+        document.getElementById('chat').scrollTop = 0;
+        return;
+    }
+    const i = view.tags.indexOf(id);
+    if (i >= 0) view.tags.splice(i, 1); else view.tags.push(id);
+    syncTagRow();
+    renderBody();
+}
+// the row stays in place (and keeps where it was scrolled to); only the pressed state changes
+function syncTagRow() {
+    homeEl?.querySelectorAll('.sc-tagrow:not(.sc-ptags) [data-tag]').forEach((b) => b.setAttribute('aria-pressed', String(view.tags.includes(b.dataset.tag))));
 }
 
 function onInput(e) {
@@ -1221,6 +1294,10 @@ function buildPanel() {
                         <input id="sc-typing-on" type="checkbox">
                         <span>${T.panelTyping}</span>
                     </label>
+                    <label class="checkbox_label" for="sc-tags-on">
+                        <input id="sc-tags-on" type="checkbox">
+                        <span>${T.panelTags}</span>
+                    </label>
                     <label class="sc-field" for="sc-hint">
                         <span>${T.panelHint}</span>
                         <input id="sc-hint" class="text_pole" type="text" placeholder="${T.hintEmpty}" autocomplete="off">
@@ -1241,6 +1318,9 @@ function buildPanel() {
     const typingBox = document.getElementById('sc-typing-on');
     typingBox.checked = !!s.typing;
     typingBox.addEventListener('change', () => { s.typing = typingBox.checked; save(); if (!s.typing) hideTyping(); });
+    const tagsBox = document.getElementById('sc-tags-on');
+    tagsBox.checked = !!s.tags;
+    tagsBox.addEventListener('change', () => { s.tags = tagsBox.checked; save(); if (!s.tags) view.tags = []; render(); });
     const hintBox = document.getElementById('sc-hint');
     hintBox.value = typeof s.hint === 'string' ? s.hint : T.hint;
     hintBox.addEventListener('input', () => { s.hint = hintBox.value; save(); applyHint(); });
