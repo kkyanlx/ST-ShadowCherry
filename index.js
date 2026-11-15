@@ -1420,9 +1420,42 @@ function buildPanel() {
     hintBox.addEventListener('input', () => { s.hint = hintBox.value; save(); applyHint(); });
 }
 
-// the drop cap is drawn by style.css; this only switches it on and off
+// the drop cap is drawn by style.css; this switches it on and off
 function applyDropCap() {
     document.body.classList.toggle('sc-dropcap', !!getSettings().dropCap);
+    markAllCaps();
+}
+
+// The cap is sized from its own font's letter heights. Italiana has Latin letters only,
+// so a Russian (or any other) first letter would be drawn by the next font in line while
+// still being measured by Italiana, and it slips a line down. Messages that start with
+// such a letter are marked, and style.css gives their cap a font that has the letter.
+const LATIN_LETTER = /[A-Za-z\u00C0-\u024F\u1E00-\u1EFF]/;
+function markCap(mes) {
+    const p = mes.querySelector(':scope .mes_text > p:not(:empty)');
+    const letter = p ? (/[\p{L}\p{N}]/u.exec(p.textContent) || [''])[0] : '';
+    const alt = !!letter && !LATIN_LETTER.test(letter);
+    if (alt && mes.dataset.scCap !== 'alt') mes.dataset.scCap = 'alt';
+    else if (!alt && mes.dataset.scCap) delete mes.dataset.scCap;
+}
+function markAllCaps() {
+    document.querySelectorAll('#chat .mes').forEach(markCap);
+}
+// messages appear, stream in, get edited and swiped: recheck only the ones that changed
+const capQueue = new Set();
+let capFrame = 0;
+function onChatText(records) {
+    for (const r of records) {
+        const el = r.target.nodeType === 1 ? r.target : r.target.parentElement;
+        const mes = el?.closest?.('.mes');
+        if (mes) capQueue.add(mes);
+        else for (const n of r.addedNodes) if (n.nodeType === 1) (n.matches('.mes') ? [n] : n.querySelectorAll('.mes')).forEach((m) => capQueue.add(m));
+    }
+    if (capQueue.size && !capFrame) capFrame = requestAnimationFrame(() => {
+        capFrame = 0;
+        capQueue.forEach((m) => { if (m.isConnected) markCap(m); });
+        capQueue.clear();
+    });
 }
 
 /* ── start ────────────────────────────────────────────── */
@@ -1435,6 +1468,7 @@ function init() {
     const chatEl = document.getElementById('chat');
     if (chatEl) {
         new MutationObserver((records) => { mount(); onChatGrow(records); }).observe(chatEl, { childList: true });
+        new MutationObserver(onChatText).observe(chatEl, { childList: true, subtree: true, characterData: true });
         chatEl.addEventListener('click', onClick);
         chatEl.addEventListener('input', onInput);
         chatEl.addEventListener('error', onImageError, true);
