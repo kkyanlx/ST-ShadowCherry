@@ -4,7 +4,10 @@
 
     Replaces the welcome screen with rows of character cameos that scroll
     sideways (pinned, recent, frequent, everyone, new) and adds a "close chat"
-    cross to the top bar. Tap a cameo to see that character's chats.
+    cross to the top bar. Tap a cameo to see that character's chats and search
+    inside them; draw a tarot card to pick someone at random. While a reply is
+    on its way, the moth on the stop button flaps its wings and the character's
+    cameo glows under the last message with three twinkling stars.
     The theme itself lives in the Moonlit Echoes preset.
 */
 
@@ -12,6 +15,8 @@ const MODULE = 'shadowCherry';
 const DEFAULTS = Object.freeze({
     home: true,
     closeButton: true,
+    dropCap: true,         // big first letter in the character's messages
+    typing: true,          // "is typing": cameo and stars under the last message
     filter: 'recent',      // sort order of the "all" view: recent · frequent · name
 });
 
@@ -54,7 +59,24 @@ const T = RU ? {
     renamePrompt: 'Новое название чата', deleteConfirm: 'Удалить этот чат? Вернуть его не получится.',
     renamed: 'Чат переименован.', deleted: 'Чат удалён.', failed: 'Не получилось. Подробности в консоли.',
     close: 'Закрыть чат', panelClose: 'Крестик «закрыть чат» на верхней панели',
-    panelHome: 'Своя главная (полка)',
+    panelHome: 'Своя главная (полка)', panelDropCap: 'Буквица в сообщениях персонажа',
+    panelTyping: 'Камея «пишет…» под последним сообщением', typing: (n) => `${n} пишет…`,
+    chatSearch: 'найти в чатах…', searching: 'ищу…', noHits: 'Ничего не нашлось.', moreChats: 'ещё чаты',
+    hitsMore: (n) => `и ещё ${n}`, inTitle: 'совпадение в названии или в скрытом тексте',
+    draw: 'вытянуть карту', openChat: 'открыть чат', startChat: 'начать чат', drawAgain: 'ещё карту', closeT: 'закрыть',
+    arcana: [
+        ['Шут', 'шаг в неизвестность, чистый лист'], ['Маг', 'всё, что нужно, уже в руках'],
+        ['Верховная Жрица', 'тайна, интуиция, недосказанное'], ['Императрица', 'нежность, забота, изобилие'],
+        ['Император', 'порядок, власть, твёрдая рука'], ['Иерофант', 'традиции, правила, клятвы'],
+        ['Влюблённые', 'выбор сердцем'], ['Колесница', 'напор, движение, победа'],
+        ['Сила', 'мягкость сильнее ярости'], ['Отшельник', 'тишина, одиночество, свой свет'],
+        ['Колесо Фортуны', 'судьба делает поворот'], ['Справедливость', 'правда и её последствия'],
+        ['Повешенный', 'пауза, взгляд под другим углом'], ['Смерть', 'одно кончается, другое начинается'],
+        ['Умеренность', 'равновесие, медленное сближение'], ['Дьявол', 'искушение, одержимость, запретное'],
+        ['Башня', 'внезапный перелом'], ['Звезда', 'надежда, исцеление'],
+        ['Луна', 'иллюзии и страхи, всё не то, чем кажется'], ['Солнце', 'радость, тепло, ясность'],
+        ['Суд', 'пробуждение, второй шанс'], ['Мир', 'круг замкнулся'],
+    ],
 } : {
     continue: 'continue', search: 'search characters…', archive: 'archive', back: '‹ back',
     recent: 'recent', frequent: 'frequent', name: 'a–z', seeAll: 'all →', found: 'found',
@@ -70,8 +92,26 @@ const T = RU ? {
     renamePrompt: 'New chat name', deleteConfirm: 'Delete this chat? This cannot be undone.',
     renamed: 'Chat renamed.', deleted: 'Chat deleted.', failed: 'That did not work. See the console for details.',
     close: 'Close chat', panelClose: '“Close chat” cross on the top bar',
-    panelHome: 'Custom home (shelf)',
+    panelHome: 'Custom home (shelf)', panelDropCap: 'Drop cap in the character’s messages',
+    panelTyping: '“Is typing” cameo under the last message', typing: (n) => `${n} is typing…`,
+    chatSearch: 'search in chats…', searching: 'searching…', noHits: 'Nothing found.', moreChats: 'more chats',
+    hitsMore: (n) => `and ${n} more`, inTitle: 'matched in the name or in hidden text',
+    draw: 'draw a card', openChat: 'open chat', startChat: 'start a chat', drawAgain: 'draw again', closeT: 'close',
+    arcana: [
+        ['The Fool', 'a leap into the unknown, a clean slate'], ['The Magician', 'everything you need is already here'],
+        ['The High Priestess', 'secrets, intuition, things left unsaid'], ['The Empress', 'tenderness, care, abundance'],
+        ['The Emperor', 'order, power, a firm hand'], ['The Hierophant', 'tradition, rules, vows'],
+        ['The Lovers', 'a choice made by the heart'], ['The Chariot', 'drive, momentum, victory'],
+        ['Strength', 'gentleness stronger than rage'], ['The Hermit', 'silence, solitude, an inner light'],
+        ['Wheel of Fortune', 'fate takes a turn'], ['Justice', 'truth and its consequences'],
+        ['The Hanged Man', 'a pause, a new angle'], ['Death', 'one thing ends, another begins'],
+        ['Temperance', 'balance, a slow coming together'], ['The Devil', 'temptation, obsession, the forbidden'],
+        ['The Tower', 'sudden upheaval'], ['The Star', 'hope, healing'],
+        ['The Moon', 'illusions and fears, nothing is what it seems'], ['The Sun', 'joy, warmth, clarity'],
+        ['Judgement', 'awakening, a second chance'], ['The World', 'the circle closes'],
+    ],
 };
+const NUMERALS = ['0', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII', 'XVIII', 'XIX', 'XX', 'XXI'];
 
 /* ── helpers ──────────────────────────────────────────── */
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -140,7 +180,7 @@ function toast(kind, text) {
 
 /* ── state ────────────────────────────────────────────── */
 // mode: 'shelf' (rows) · 'all' (everyone, as a grid) · 'page' (one character's chats)
-const view = { mode: 'shelf', prev: 'shelf', avatar: null, query: '', archive: false, openMenu: null, chats: null };
+const view = { mode: 'shelf', prev: 'shelf', avatar: null, query: '', archive: false, openMenu: null, chats: null, chatQuery: '', found: null };
 const ROW_MAX = 12;       // cameos per sideways row; "frequent" and "all" appear once there are more
 const lastSnips = new Map(); // avatar -> last line of their latest chat
 const chatCounts = new Map();   // avatar -> number of chats (lazy, cached)
@@ -213,10 +253,14 @@ function headHtml() {
     return `<div class="sc-head"><span class="sc-logo">Shadow Cherry</span><span class="sc-side"><span class="sc-jp">影色のさくらんぼ</span>${moonHtml()}</span></div>`;
 }
 
+// a small tarot card with a star, for the "draw a card" button
+const CARD_ICON = '<svg viewBox="0 0 16 20" aria-hidden="true"><rect x="2.5" y="1.5" width="11" height="17" rx="1.2"/><rect x="4.5" y="3.5" width="7" height="13" rx=".4" stroke-width=".7"/><path d="M8 6.6Q8.3 9.7 11 10Q8.3 10.3 8 13.4Q7.7 10.3 5 10Q7.7 9.7 8 6.6Z" fill="currentColor" stroke="none"/></svg>';
+
 function toolsHtml() {
     return `<div class="sc-tools">
             <label class="sc-search"><span aria-hidden="true">⌕</span><input type="search" id="sc-q" placeholder="${T.search}" value="${esc(view.query)}" autocomplete="off"></label>
             <button type="button" class="sc-btn ${view.archive ? 'sc-on' : ''}" data-act="archive-view">${view.archive ? T.back : T.archive}</button>
+            <button type="button" class="sc-btn sc-draw" data-act="draw" title="${T.draw}" aria-label="${T.draw}">${CARD_ICON}</button>
         </div>`;
 }
 
@@ -350,21 +394,31 @@ function chatRow(c, chat, i, isLast) {
     </div>`;
 }
 
+function chatListHtml(c) {
+    const s = getSettings();
+    if (!view.chats) return emptyHtml(T.loading);
+    if (!view.chats.length) return emptyHtml(T.noChats);
+    const lastFile = view.chats[0].file_name;
+    const favs = s.favChats[c.avatar] || [];
+    const ordered = [...view.chats].sort((a, b) => Number(favs.includes(b.file_name)) - Number(favs.includes(a.file_name)));
+    return ordered.map((chat) => chatRow(c, chat, view.chats.indexOf(chat), chat.file_name === lastFile)).join('');
+}
+
+// under the search box on a character's page: the list, or what the search found
+function chatsBody(c) {
+    return chatQueryActive() ? foundHtml(c) : chatListHtml(c);
+}
+
 function pageHtml() {
     const s = getSettings();
     const c = characterBy(view.avatar);
     const pinned = s.pinned.includes(c.avatar), archived = s.archived.includes(c.avatar);
-    let body, stat = '';
-    if (!view.chats) body = emptyHtml(T.loading);
-    else if (!view.chats.length) body = emptyHtml(T.noChats);
-    else {
+    let stat = '';
+    if (view.chats?.length) {
         const total = view.chats.reduce((sum, x) => sum + (Number(x.chat_items) || 0), 0);
         stat = `${view.chats.length} ${T.chats}${total ? ` · ${total} ${T.mes}` : ''}`;
-        const lastFile = view.chats[0].file_name;
-        const favs = s.favChats[c.avatar] || [];
-        const ordered = [...view.chats].sort((a, b) => Number(favs.includes(b.file_name)) - Number(favs.includes(a.file_name)));
-        body = ordered.map((chat) => chatRow(c, chat, view.chats.indexOf(chat), chat.file_name === lastFile)).join('');
     }
+    const search = view.chats?.length ? `<label class="sc-search sc-csearch"><span aria-hidden="true">⌕</span><input type="search" id="sc-cq" placeholder="${T.chatSearch}" value="${esc(view.chatQuery)}" autocomplete="off" enterkeyhint="search"></label>` : '';
     return `
         <button type="button" class="sc-back" data-act="back">${T.back}</button>
         <div class="sc-dh">${cameo(c, 'sc-cameo-sm')}<span class="sc-nm">${esc(c.name)}</span>
@@ -374,7 +428,167 @@ function pageHtml() {
             <button type="button" class="sc-btn ${archived ? 'sc-on' : ''}" data-act="archive">${archived ? T.fromArchive : T.toArchive}</button>
             ${stat ? `<span class="sc-meta sc-stat">${esc(stat)}</span>` : ''}
         </div>
-        <div class="sc-chats">${body}</div>`;
+        ${search}
+        <div class="sc-chats">${chatsBody(c)}</div>`;
+}
+
+/* ── search inside a character's chats ────────────────── */
+// The server says which chats match; the lines themselves are found here, in the
+// chats it named, a few chats at a time and newest first.
+const FOUND_STEP = 6;     // chats shown, and read, per "more chats"
+const HITS_SHOWN = 3;     // lines shown per chat
+const queryParts = (q) => q.toLowerCase().split(/\s+/).filter(Boolean);
+const chatQueryActive = () => view.chatQuery.trim().length >= 2;
+let searchSeq = 0;
+let searchTimer = null;
+
+// the message as a reader sees it: no tags, no markdown marks
+const plainText = (t) => String(t || '').replace(/<[^>]*>/g, ' ').replace(/[*_~`]+/g, '').replace(/\s+/g, ' ').trim();
+
+// a window of text around the first match, with every match marked
+function markedSnippet(text, parts) {
+    const lower = text.toLowerCase();
+    const first = Math.max(0, Math.min(...parts.map((p) => lower.indexOf(p)).filter((i) => i > -1)));
+    const firstLen = (parts.find((p) => lower.indexOf(p) === first) || '').length;
+    let from = Math.max(0, first - 50), to = Math.min(text.length, first + 120);
+    if (from > 0) { const sp = text.indexOf(' ', from); if (sp > -1 && sp < first) from = sp + 1; }
+    if (to < text.length) { const sp = text.lastIndexOf(' ', to); if (sp > first + firstLen) to = sp; }
+    const slice = text.slice(from, to), low = slice.toLowerCase();
+    const ranges = [];
+    for (const part of parts) {
+        for (let i = low.indexOf(part); i > -1; i = low.indexOf(part, i + part.length)) ranges.push([i, i + part.length]);
+    }
+    ranges.sort((x, y) => x[0] - y[0]);
+    let html = '', at = 0;
+    for (const [x, y] of ranges) {
+        if (y <= at) continue;
+        const start = Math.max(x, at);
+        html += esc(slice.slice(at, start)) + `<mark>${esc(slice.slice(start, y))}</mark>`;
+        at = y;
+    }
+    html += esc(slice.slice(at));
+    return `${from > 0 ? '…' : ''}${html}${to < text.length ? '…' : ''}`;
+}
+
+// The messages of one chat that hold the most of the words, newest first. The
+// server matches a chat when its words are anywhere in it, so a single message
+// may hold only some of them; then the closest ones are shown.
+function findLines(data, parts) {
+    const start = data[0] && !('mes' in data[0]) ? 1 : 0;      // the first line of a chat file is its header
+    let best = 1, lines = [];
+    for (let i = data.length - 1; i >= start; i--) {
+        const msg = data[i];
+        const text = plainText(msg?.mes);
+        const low = text.toLowerCase();
+        const n = parts.filter((p) => low.includes(p)).length;
+        if (!n || n < best) continue;
+        if (n > best) { best = n; lines = []; }
+        lines.push({ id: i - start, name: msg.name, date: msg.send_date, text });
+    }
+    return lines;
+}
+
+function foundHtml(c) {
+    const f = view.found;
+    if (!f || f.query !== view.chatQuery.trim()) return emptyHtml(T.searching);
+    if (f.error) return emptyHtml(T.failed);
+    if (!f.files.length) return emptyHtml(T.noHits);
+    const parts = queryParts(f.query);
+    const groups = f.files.slice(0, f.shown).map((chat) => {
+        const title = chatTitle(chat.file_name);
+        const m = toMoment(chat.last_mes);
+        const meta = [m ? dayLabel(m) : '', chat.message_count ? `${chat.message_count} ${T.mes}` : ''].filter(Boolean).join(' · ');
+        const lines = f.lines.get(chat.file_name);
+        let body;
+        if (!lines) body = `<span class="sc-meta sc-hit-wait">${T.searching}</span>`;
+        else if (!lines.length) body = `<span class="sc-meta sc-hit-wait">${T.inTitle}</span>`;
+        else {
+            body = lines.slice(0, HITS_SHOWN).map((line) => {
+                const day = dayLabel(toMoment(line.date));
+                return `<button type="button" class="sc-hit" data-act="jump" data-mes="${line.id}">
+                    <span class="sc-meta">${esc([line.name, day].filter(Boolean).join(' · '))}</span>
+                    <span class="sc-hit-t">${markedSnippet(line.text, parts)}</span>
+                </button>`;
+            }).join('') + (lines.length > HITS_SHOWN ? `<span class="sc-meta sc-hit-more">${T.hitsMore(lines.length - HITS_SHOWN)}</span>` : '');
+        }
+        return `<div class="sc-crow sc-hitgroup" data-file="${esc(chat.file_name)}">
+            <button type="button" class="sc-crow-main" data-act="open-chat">
+                <span class="sc-crow-t"><span class="${title.auto ? 'sc-auto' : ''}">${esc(title.text)}</span></span>
+                ${meta ? `<span class="sc-meta">${esc(meta)}</span>` : ''}
+            </button>
+            ${body}
+        </div>`;
+    }).join('');
+    const more = f.files.length > f.shown ? `<button type="button" class="sc-btn sc-more-found" data-act="more-found">${T.moreChats} · ${f.files.length - f.shown}</button>` : '';
+    return `<div class="sc-sec"><span>${T.found} · ${f.files.length}</span></div>${groups}${more}`;
+}
+
+// redraw only the results, so the search box keeps its focus and keyboard
+function drawChats() {
+    const box = homeEl?.isConnected && view.mode === 'page' ? homeEl.querySelector('.sc-chats') : null;
+    const c = characterBy(view.avatar);
+    if (box && c) box.innerHTML = chatsBody(c);
+}
+
+async function runChatSearch() {
+    const avatar = view.avatar, query = view.chatQuery.trim();
+    const seq = ++searchSeq;
+    if (query.length < 2) { view.found = null; drawChats(); return; }
+    try {
+        const res = await fetch('/api/chats/search', {
+            method: 'POST', headers: ctx().getRequestHeaders(),
+            body: JSON.stringify({ query, avatar_url: avatar }),
+        });
+        const data = await res.json();
+        if (seq !== searchSeq) return;
+        if (!res.ok || !Array.isArray(data)) throw new Error(data?.error || 'search failed');
+        const time = (x) => toMoment(x.last_mes)?.valueOf() ?? 0;
+        const files = data.filter((x) => x && x.file_name)
+            .map((x) => ({ ...x, file_name: `${stripExt(x.file_name)}.jsonl` }))
+            .sort((a, b) => time(b) - time(a));
+        view.found = { query, files, lines: new Map(), shown: FOUND_STEP, error: false };
+    } catch (e) {
+        if (seq !== searchSeq) return;
+        console.error('[Shadow Cherry] chat search failed', e);
+        view.found = { query, files: [], lines: new Map(), shown: 0, error: true };
+    }
+    drawChats();
+    loadLines(seq);
+}
+
+// read the chats on screen whose lines are not known yet, two at a time
+async function loadLines(seq) {
+    const f = view.found, c = characterBy(view.avatar);
+    if (!f || !c) return;
+    const parts = queryParts(f.query);
+    const want = f.files.slice(0, f.shown).filter((x) => !f.lines.has(x.file_name));
+    for (let i = 0; i < want.length; i += 2) {
+        await Promise.all(want.slice(i, i + 2).map(async (chat) => {
+            let lines = [];
+            try {
+                const res = await fetch('/api/chats/get', {
+                    method: 'POST', headers: ctx().getRequestHeaders(),
+                    body: JSON.stringify({ ch_name: c.name, file_name: stripExt(chat.file_name), avatar_url: c.avatar }),
+                });
+                const data = await res.json();
+                lines = Array.isArray(data) ? findLines(data, parts) : [];
+            } catch (e) { console.warn('[Shadow Cherry] could not read a chat', e); }
+            if (seq === searchSeq) f.lines.set(chat.file_name, lines);
+        }));
+        if (seq !== searchSeq) return;
+        drawChats();
+    }
+}
+
+// open the chat and scroll to the message
+async function jumpTo(avatar, file, mesId) {
+    await openCharacterChatFile(avatar, file);
+    const want = stripExt(file);
+    for (let i = 0; i < 30 && ctx().getCurrentChatId() !== want; i++) await new Promise((r) => setTimeout(r, 100));
+    if (ctx().getCurrentChatId() !== want) return;
+    await new Promise((r) => setTimeout(r, 250));     // let the messages render
+    try { await ctx().executeSlashCommandsWithOptions(`/chat-jump ${Number(mesId)}`, { showOutput: false }); }
+    catch (e) { console.warn('[Shadow Cherry] chat-jump failed', e); }
 }
 
 /* ── render & mount ───────────────────────────────────── */
@@ -459,6 +673,7 @@ async function reloadChats(avatar) {
 
 async function loadChats(avatar) {
     view.chats = null;
+    view.chatQuery = ''; view.found = null; searchSeq++;
     render();
     if (!await reloadChats(avatar) && view.avatar === avatar) view.chats = [];
     render();
@@ -652,7 +867,7 @@ function onClick(e) {
     switch (act) {
         case 'archive-view': view.archive = !view.archive; view.query = ''; render(); break;
         case 'all': view.mode = 'all'; render(); document.getElementById('chat').scrollTop = 0; break;
-        case 'back': view.mode = view.mode === 'page' ? view.prev : 'shelf'; view.prev = 'shelf'; view.avatar = null; view.openMenu = null; view.chats = null; render(); document.getElementById('chat').scrollTop = 0; break;
+        case 'back': view.mode = view.mode === 'page' ? view.prev : 'shelf'; view.prev = 'shelf'; view.avatar = null; view.openMenu = null; view.chats = null; view.chatQuery = ''; view.found = null; searchSeq++; render(); document.getElementById('chat').scrollTop = 0; break;
         case 'new-chat': newChat(avatar); break;
         case 'pin': toggleIn(s.pinned, avatar); save(); render(); break;
         case 'archive': toggleIn(s.archived, avatar); save(); render(); break;
@@ -662,18 +877,30 @@ function onClick(e) {
         case 'fav': { const list = (s.favChats[avatar] ||= []); toggleIn(list, file); if (!list.length) delete s.favChats[avatar]; save(); view.openMenu = null; render(); break; }
         case 'download': view.openMenu = null; render(); downloadChat(avatar, file); break;
         case 'delete': view.openMenu = null; render(); deleteChat(avatar, file); break;
+        case 'jump': jumpTo(avatar, file, actEl.dataset.mes); break;
+        case 'more-found': if (view.found) { view.found.shown += FOUND_STEP; drawChats(); loadLines(searchSeq); } break;
+        case 'draw': openTarot(); break;
     }
 }
 
 function onInput(e) {
-    if (e.target?.id !== 'sc-q') return;
-    view.query = e.target.value;
-    renderBody();
+    if (e.target?.id === 'sc-q') {
+        view.query = e.target.value;
+        renderBody();
+    } else if (e.target?.id === 'sc-cq') {
+        const wasActive = chatQueryActive();
+        view.chatQuery = e.target.value;
+        view.openMenu = null;
+        // the list comes back at once when the box is cleared; a search waits for a pause in typing
+        if (wasActive !== chatQueryActive() || !chatQueryActive()) { view.found = null; searchSeq++; drawChats(); }
+        clearTimeout(searchTimer);
+        if (chatQueryActive()) searchTimer = setTimeout(runChatSearch, 400);
+    }
 }
 
 // a picture that does not load gives way to the character's initial
 function onImageError(e) {
-    const frame = e.target instanceof HTMLImageElement ? e.target.closest('#sc-home .sc-cameo') : null;
+    const frame = e.target instanceof HTMLImageElement ? e.target.closest('#sc-home .sc-cameo, #sc-typing .sc-cameo') : null;
     if (!frame) return;
     e.target.remove();
     frame.insertAdjacentHTML('beforeend', `<span class="sc-ini">${esc(frame.dataset.ini)}</span>`);
@@ -701,6 +928,177 @@ function dropCharacter(avatar) {
     delete s.favChats[avatar];
     chatCounts.delete(avatar); lastSnips.delete(avatar);
     save();
+}
+
+/* ── draw a card ──────────────────────────────────────── */
+// A random character, face down first, then turned over as one of the major arcana.
+// The arcana is chance too: it is a mood for the evening, not a reading.
+const TAROT_BACK = `<svg viewBox="0 0 100 160" aria-hidden="true">
+    <rect x="4" y="4" width="92" height="152" rx="5"/><rect x="9" y="9" width="82" height="142" rx="2.5" stroke-width=".6"/>
+    <circle cx="50" cy="80" r="23"/><circle cx="50" cy="80" r="29" stroke-width=".5" stroke-dasharray="1 3"/>
+    <path d="M55 64A16 16 0 1 0 55 96A20 20 0 0 1 55 64Z" class="f"/>
+    <path d="M50 30L51.2 37.8L59 39L51.2 40.2L50 48L48.8 40.2L41 39L48.8 37.8Z" class="f"/>
+    <path d="M50 112L51.2 119.8L59 121L51.2 122.2L50 130L48.8 122.2L41 121L48.8 119.8Z" class="f"/>
+    <path d="M50 14V22M50 138V146M14 80H22M78 80H86" stroke-width=".7"/>
+    <path d="M15 15L21 15M15 15L15 21M85 15L79 15M85 15L85 21M15 145L21 145M15 145L15 139M85 145L79 145M85 145L85 139" stroke-width=".7"/>
+</svg>`;
+let tarotEl = null, tarotLast = null, tarotPick = null, tarotFocus = null;
+
+function tarotPool() {
+    const s = getSettings();
+    const all = ctx().characters.filter((c) => c && !s.archived.includes(c.avatar));
+    return all.length > 1 ? all.filter((c) => c.avatar !== tarotLast) : all;
+}
+
+function tarotFront(c, n) {
+    const [arc] = T.arcana[n];
+    const full = c.avatar && c.avatar !== 'none' ? `/characters/${encodeURIComponent(c.avatar)}` : '';
+    const thumb = full ? ctx().getThumbnailUrl('avatar', c.avatar) : '';
+    return `<span class="sc-t-num">${NUMERALS[n]}</span>
+        <span class="sc-t-win">${full ? `<img src="${esc(full)}" data-thumb="${esc(thumb)}" alt="">` : `<span class="sc-ini">${esc((c.name || '?').trim().charAt(0).toUpperCase())}</span>`}</span>
+        <span class="sc-t-name">${esc(c.name)}</span>
+        <span class="sc-t-arc">${esc(arc)}</span>`;
+}
+
+function dealTarot() {
+    const pool = tarotPool();
+    if (!pool.length || !tarotEl) return;
+    const c = pool[Math.floor(Math.random() * pool.length)];
+    const n = Math.floor(Math.random() * T.arcana.length);
+    tarotPick = c.avatar; tarotLast = c.avatar;
+    tarotEl.querySelector('.sc-t-front').innerHTML = tarotFront(c, n);
+    const img = tarotEl.querySelector('.sc-t-win img');
+    // the full picture first, then the thumbnail, then the initial
+    img?.addEventListener('error', () => {
+        if (img.dataset.thumb) { img.src = img.dataset.thumb; img.dataset.thumb = ''; return; }
+        img.insertAdjacentHTML('afterend', `<span class="sc-ini">${esc((c.name || '?').trim().charAt(0).toUpperCase())}</span>`);
+        img.remove();
+    });
+    tarotEl.querySelector('.sc-t-read').innerHTML = `<b>${esc(T.arcana[n][0])}</b> — ${esc(T.arcana[n][1])}`;
+    tarotEl.querySelector('[data-t="open"]').textContent = hasChats(c) ? T.openChat : T.startChat;
+}
+
+function flipTarot(up) {
+    tarotEl?.classList.toggle('sc-t-up', up);
+}
+
+function openTarot() {
+    if (tarotEl) return;
+    if (!tarotPool().length) return;
+    tarotFocus = document.activeElement;
+    tarotEl = document.createElement('div');
+    tarotEl.id = 'sc-tarot';
+    tarotEl.setAttribute('role', 'dialog');
+    tarotEl.setAttribute('aria-modal', 'true');
+    tarotEl.setAttribute('aria-label', T.draw);
+    tarotEl.innerHTML = `
+        <div class="sc-t-stage">
+            <div class="sc-t-card">
+                <div class="sc-t-face sc-t-back">${TAROT_BACK}</div>
+                <div class="sc-t-face sc-t-front"></div>
+            </div>
+        </div>
+        <p class="sc-t-read" aria-live="polite"></p>
+        <div class="sc-t-acts">
+            <button type="button" class="sc-btn sc-fill" data-t="open"></button>
+            <button type="button" class="sc-btn" data-t="again">${T.drawAgain}</button>
+            <button type="button" class="sc-btn sc-t-x" data-t="close" aria-label="${T.closeT}">✕</button>
+        </div>`;
+    document.body.appendChild(tarotEl);
+    dealTarot();
+    requestAnimationFrame(() => tarotEl?.classList.add('sc-t-in'));
+    setTimeout(() => { flipTarot(true); tarotEl?.querySelector('[data-t="open"]')?.focus({ preventScroll: true }); }, 650);
+
+    tarotEl.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-t]');
+        if (!b) { if (e.target === tarotEl) closeTarot(); return; }
+        if (b.dataset.t === 'close') closeTarot();
+        else if (b.dataset.t === 'again') {
+            if (!tarotEl.classList.contains('sc-t-up')) return;
+            flipTarot(false);
+            setTimeout(() => { dealTarot(); flipTarot(true); }, 520);
+        } else if (b.dataset.t === 'open') {
+            const c = characterBy(tarotPick);
+            closeTarot();
+            if (!c) return;
+            if (hasChats(c)) openCharacterChatFile(c.avatar, c.chat);
+            else newChat(c.avatar);
+        }
+    });
+    tarotEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { e.preventDefault(); closeTarot(); }
+        if (e.key === 'Tab') {      // keep the keyboard inside the dialog
+            const items = [...tarotEl.querySelectorAll('button')];
+            const i = items.indexOf(document.activeElement);
+            const next = e.shiftKey ? (i <= 0 ? items.length - 1 : i - 1) : (i + 1) % items.length;
+            e.preventDefault(); items[next].focus();
+        }
+    });
+}
+
+function closeTarot() {
+    const el = tarotEl;
+    if (!el) return;
+    tarotEl = null;
+    el.classList.remove('sc-t-in');
+    setTimeout(() => el.remove(), 300);
+    try { tarotFocus?.focus?.({ preventScroll: true }); } catch { /* the button may be gone */ }
+}
+
+/* ── the moth waits with you ──────────────────────────── */
+// From the moment a message is sent until the first word of the reply arrives
+// (the thinking included), the stop button is a moth that slowly flaps its wings.
+// The flag lives on <body>; the drawing is in style.css.
+function waiting(on) {
+    if (on) document.body.dataset.scWait = '1';
+    else delete document.body.dataset.scWait;
+}
+
+/* ── "is typing" ───────────────────────────────────────── */
+// Under the last message, from "sent" until the reply appears: the character's
+// cameo breathing light and a bubble with three twinkling stars. It goes away
+// when the reply's message shows up (its thinking included) or its first word
+// arrives, and when the generation ends or stops.
+let typingEl = null;
+
+function typingCharacter(opts) {
+    const { characters, characterId } = ctx();
+    // a group sends each member's turn with force_chid; a one-on-one chat is the open character
+    const forced = opts?.force_chid;
+    const id = forced !== undefined && forced !== null && forced !== '' && Number.isInteger(Number(forced)) ? Number(forced) : Number(characterId);
+    return characters?.[id] || null;
+}
+
+function showTyping(opts) {
+    hideTyping();
+    if (!getSettings().typing) return;
+    const chatEl = document.getElementById('chat');
+    const c = typingCharacter(opts);
+    if (!chatEl || !c || homeEl?.isConnected) return;
+    const atBottom = chatEl.scrollHeight - chatEl.scrollTop - chatEl.clientHeight < 120;
+    typingEl = document.createElement('div');
+    typingEl.id = 'sc-typing';
+    typingEl.setAttribute('role', 'status');
+    typingEl.setAttribute('aria-label', T.typing(c.name));
+    typingEl.innerHTML = `${cameo(c, 'sc-typing-cameo')}
+        <span class="sc-typing-stars" aria-hidden="true"><span>✦</span><span>✧</span><span>✦</span></span>
+        <span class="sc-typing-nm">${esc(c.name)}</span>`;
+    chatEl.appendChild(typingEl);
+    if (atBottom) requestAnimationFrame(() => { chatEl.scrollTop = chatEl.scrollHeight; });
+}
+
+function hideTyping() {
+    typingEl?.remove();
+    typingEl = null;
+}
+
+// keeps the indicator last while the chat grows, and drops it once the reply's message is there
+function onChatGrow(records) {
+    if (!typingEl?.isConnected) return;
+    const added = records.flatMap((r) => [...r.addedNodes]).filter((n) => n instanceof HTMLElement && n.classList.contains('mes'));
+    if (!added.length) return;
+    if (added.some((n) => n.getAttribute('is_user') === 'false' && n.getAttribute('is_system') !== 'true')) { hideTyping(); return; }
+    typingEl.parentElement.appendChild(typingEl);
 }
 
 /* ── close-chat cross on the top bar ──────────────────── */
@@ -759,6 +1157,14 @@ function buildPanel() {
                         <input id="sc-close-on" type="checkbox">
                         <span>${T.panelClose}</span>
                     </label>
+                    <label class="checkbox_label" for="sc-dropcap-on">
+                        <input id="sc-dropcap-on" type="checkbox">
+                        <span>${T.panelDropCap}</span>
+                    </label>
+                    <label class="checkbox_label" for="sc-typing-on">
+                        <input id="sc-typing-on" type="checkbox">
+                        <span>${T.panelTyping}</span>
+                    </label>
                 </div>
             </div>
         </div>`);
@@ -769,16 +1175,28 @@ function buildPanel() {
     const closeBox = document.getElementById('sc-close-on');
     closeBox.checked = !!s.closeButton;
     closeBox.addEventListener('change', () => { s.closeButton = closeBox.checked; save(); updateCloseButton(); });
+    const capBox = document.getElementById('sc-dropcap-on');
+    capBox.checked = !!s.dropCap;
+    capBox.addEventListener('change', () => { s.dropCap = capBox.checked; save(); applyDropCap(); });
+    const typingBox = document.getElementById('sc-typing-on');
+    typingBox.checked = !!s.typing;
+    typingBox.addEventListener('change', () => { s.typing = typingBox.checked; save(); if (!s.typing) hideTyping(); });
+}
+
+// the drop cap is drawn by style.css; this only switches it on and off
+function applyDropCap() {
+    document.body.classList.toggle('sc-dropcap', !!getSettings().dropCap);
 }
 
 /* ── start ────────────────────────────────────────────── */
 function init() {
     getSettings();
     buildPanel();
+    applyDropCap();
 
     const chatEl = document.getElementById('chat');
     if (chatEl) {
-        new MutationObserver(() => mount()).observe(chatEl, { childList: true });
+        new MutationObserver((records) => { mount(); onChatGrow(records); }).observe(chatEl, { childList: true });
         chatEl.addEventListener('click', onClick);
         chatEl.addEventListener('input', onInput);
         chatEl.addEventListener('error', onImageError, true);
@@ -789,7 +1207,16 @@ function init() {
     // the character whose chat is open: its count is what changes while the home is away
     const current = () => ctx().characters?.[ctx().characterId]?.avatar;
 
-    on(E.CHAT_CHANGED, () => { lastSnips.clear(); chatCounts.delete(current()); setTimeout(() => { mount(); updateCloseButton(); }, 0); });
+    on(E.CHAT_CHANGED, () => { waiting(false); hideTyping(); closeTarot(); lastSnips.clear(); chatCounts.delete(current()); setTimeout(() => { mount(); updateCloseButton(); }, 0); });
+    // the moth: from "sent" to the first word of the reply; quiet background generations do not count
+    on(E.GENERATION_AFTER_COMMANDS, (type, opts, dryRun) => {
+        if (dryRun || type === 'quiet') return;
+        waiting(true);
+        // the "is typing" cameo is for the character's reply; impersonation writes your own message
+        if (type !== 'impersonate') showTyping(opts);
+    });
+    on(E.STREAM_TOKEN_RECEIVED, (text) => { if (String(text ?? '').trim()) { waiting(false); hideTyping(); } });
+    for (const type of [E.MESSAGE_RECEIVED, E.GENERATION_ENDED, E.GENERATION_STOPPED]) on(type, () => { waiting(false); hideTyping(); });
     on(E.CHAT_DELETED, (name) => { const a = current(); if (a) { chatCounts.delete(a); dropFav(a, `${name}.jsonl`); } lastSnips.clear(); redraw(); });
     on(E.CHAT_RENAMED, (d) => { if (!renaming && d?.avatarId && !d.groupId) moveFav(d.avatarId, d.oldFileName, d.newFileName); });
     on(E.CHARACTER_EDITED, redraw);

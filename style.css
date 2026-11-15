@@ -1,8 +1,15 @@
-/*  ✦ Shadow Cherry — home (rows of cameos, character page), the close-chat cross
-    and the settings panel. Colours and fonts come from the theme (--sc-* in the
-    Moonlit preset); every value has a fallback, so it also works under other themes. */
+/*  ✦ Shadow Cherry — home (rows of cameos, character page, search in chats),
+    the tarot draw, the waiting moth, the loading screen, the drop cap, the
+    close-chat cross and the settings panel. Colours and fonts come from the theme
+    (--sc-* in the Moonlit preset); every value has a fallback, so it also works
+    under other themes. */
 
-#sc-home {
+/* the theme's fonts, for the loading screen: it shows before the theme is applied */
+@import url("https://fonts.googleapis.com/css2?family=Italiana&family=Special+Elite&display=swap");
+
+#sc-home,
+#sc-tarot,
+#loader {
     --h-ink: var(--sc-black, #161616);
     --h-mauve: var(--sc-mauve, #ac9e9b);
     --h-bone: var(--sc-bone, var(--SmartThemeBodyColor, #e7e3e0));
@@ -16,7 +23,8 @@
     --h-text: var(--sc-text, "Spectral", Georgia, serif);
     --h-meta: var(--sc-meta, "Special Elite", "Courier New", monospace);
     --h-corner: linear-gradient(var(--h-line), var(--h-line));
-
+}
+#sc-home {
     display: flex;
     flex-direction: column;
     gap: 14px;
@@ -112,6 +120,8 @@
     font: .68rem var(--h-meta); letter-spacing: .14em; text-transform: uppercase;
     color: var(--h-dusty); border: 1px solid var(--h-line); padding: 6px 10px; white-space: nowrap;
 }
+#sc-home .sc-btn.sc-draw { display: grid; place-items: center; padding: 0 9px; }
+#sc-home .sc-btn.sc-draw svg { width: 14px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.1; }
 #sc-home .sc-btn.sc-fill,
 #sc-home .sc-btn.sc-on { color: var(--h-ink); background: var(--h-dusty); border-color: var(--h-dusty); }
 #sc-home .sc-chips { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -204,6 +214,24 @@
 #sc-home .sc-acts button:hover { color: var(--h-porc); border-color: var(--h-line); }
 #sc-home .sc-acts .sc-del { color: #d98fa6; border-color: rgba(217, 143, 166, .45); }
 
+/* search inside a character's chats: lines with the words marked */
+#sc-home .sc-csearch { min-height: 34px; }
+#sc-home .sc-hitgroup { padding-bottom: 6px; }
+#sc-home .sc-hitgroup .sc-crow-main { padding-right: 12px; }
+#sc-home .sc-hit {
+    display: flex; flex-direction: column; gap: 2px; width: 100%; box-sizing: border-box;
+    padding: 6px 12px 6px 22px; position: relative;
+}
+#sc-home .sc-hit::before { content: "✧"; position: absolute; left: 9px; top: 7px; font: 8px var(--mainFontFamily, sans-serif); color: var(--h-faded); }
+#sc-home .sc-hit .sc-meta { font-size: .6rem; }
+#sc-home .sc-hit-t { font: .86rem/1.45 var(--h-text); color: var(--h-mauve); overflow-wrap: anywhere; }
+#sc-home .sc-hit-t mark { background: rgba(249, 220, 236, .14); color: var(--h-porc); border-radius: 2px; padding: 0 1px; box-shadow: 0 1px 0 rgba(249, 220, 236, .5); }
+#sc-home .sc-hit:active { background: rgba(249, 220, 236, .06); }
+@media (hover: hover) { #sc-home .sc-hit:hover .sc-hit-t { color: var(--h-bone); } }
+#sc-home .sc-hit-more,
+#sc-home .sc-hit-wait { display: block; padding: 2px 12px 4px 22px; font-size: .6rem; }
+#sc-home .sc-more-found { align-self: center; margin-top: 2px; }
+
 @media (max-width: 360px) {
     #sc-home .sc-sh .sc-cameo { width: 52px; height: 66px; }
 }
@@ -245,3 +273,259 @@
 .sc-settings .inline-drawer-header b { font-weight: 600; letter-spacing: .02em; }
 .sc-settings .sc-star { color: var(--SmartThemeQuoteColor, #f9dcec); font-size: .8em; }
 .sc-settings .inline-drawer-content { display: flex; flex-direction: column; gap: 8px; padding-block: 6px 10px; }
+
+/* ── draw a card ── */
+#sc-tarot {
+    position: fixed; inset: 0; z-index: 9990;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+    padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+    background: radial-gradient(60% 50% at 50% 45%, rgba(40, 34, 38, .78), rgba(10, 10, 10, .9));
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    color: var(--h-bone); font-family: var(--h-text);
+    opacity: 0; transition: opacity .3s ease;
+}
+#sc-tarot.sc-t-in { opacity: 1; }
+#sc-tarot button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+#sc-tarot button:focus-visible { outline: 2px solid var(--h-porc); outline-offset: 2px; }
+#sc-tarot .sc-t-stage { perspective: 1100px; }
+#sc-tarot .sc-t-card {
+    position: relative; width: min(62vw, 230px); aspect-ratio: 100 / 160;
+    transform-style: preserve-3d; transition: transform .7s cubic-bezier(.3, .7, .2, 1);
+    transform: translateY(14px) rotateY(0deg);
+}
+#sc-tarot.sc-t-in .sc-t-card { transform: translateY(0) rotateY(0deg); }
+#sc-tarot.sc-t-up .sc-t-card { transform: rotateY(180deg); }
+#sc-tarot .sc-t-face {
+    position: absolute; inset: 0; border-radius: 10px; overflow: hidden;
+    -webkit-backface-visibility: hidden; backface-visibility: hidden;
+    background: linear-gradient(160deg, #262224, #141414 70%);
+    box-shadow: 0 0 0 1px rgba(199, 179, 190, .35), 0 18px 50px -18px #000, 0 0 40px -12px var(--h-glow);
+}
+#sc-tarot .sc-t-back svg { width: 100%; height: 100%; display: block; fill: none; stroke: var(--h-dusty); stroke-width: 1; }
+#sc-tarot .sc-t-back svg .f { fill: var(--h-porc); stroke: none; filter: drop-shadow(0 0 3px var(--h-glow)); }
+#sc-tarot .sc-t-front {
+    transform: rotateY(180deg);
+    display: flex; flex-direction: column; align-items: center; gap: 6%;
+    padding: 8% 9% 9%; box-sizing: border-box;
+    box-shadow: inset 0 0 0 5px #141414, inset 0 0 0 6px rgba(199, 179, 190, .45), 0 0 0 1px rgba(199, 179, 190, .35), 0 18px 50px -18px #000, 0 0 46px -10px var(--h-glow);
+}
+#sc-tarot .sc-t-num { font: 1rem/1 var(--h-name); letter-spacing: .2em; margin-right: -.2em; color: var(--h-porc); }
+#sc-tarot .sc-t-win {
+    flex: 1; width: 100%; min-height: 0; display: grid; place-items: center; overflow: hidden;
+    border-radius: 999px 999px 4px 4px; background: radial-gradient(circle at 50% 35%, #4a4246, #1d1b1a);
+    box-shadow: 0 0 0 1px var(--h-dusty), 0 0 0 4px #141414, 0 0 0 5px rgba(199, 179, 190, .3);
+}
+#sc-tarot .sc-t-win img { width: 100%; height: 100%; object-fit: cover; object-position: center 22%; display: block; }
+#sc-tarot .sc-t-win .sc-ini { font: 3rem var(--h-name); color: var(--h-porc); }
+#sc-tarot .sc-t-name {
+    max-width: 100%; font: 1.35rem/1.05 var(--h-name); color: var(--h-dusty); text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 14px rgba(249, 220, 236, .25);
+}
+#sc-tarot .sc-t-arc { font: .58rem var(--h-meta); letter-spacing: .24em; margin-right: -.24em; text-transform: uppercase; color: var(--h-faded); text-align: center; }
+#sc-tarot .sc-t-read {
+    margin: 0; max-width: 300px; min-height: 2.9em; text-align: center;
+    font: italic .95rem/1.45 var(--h-text); color: var(--h-mauve);
+    opacity: 0; transition: opacity .4s ease .35s;
+}
+#sc-tarot .sc-t-read b { font-weight: 400; color: var(--h-porc); }
+#sc-tarot.sc-t-up .sc-t-read { opacity: 1; }
+#sc-tarot .sc-t-acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+#sc-tarot .sc-btn {
+    font: .68rem var(--h-meta); letter-spacing: .14em; text-transform: uppercase;
+    color: var(--h-dusty); border: 1px solid var(--h-line); padding: 8px 12px; white-space: nowrap;
+}
+#sc-tarot .sc-btn.sc-fill { color: var(--h-ink); background: var(--h-dusty); border-color: var(--h-dusty); }
+#sc-tarot .sc-btn:active { opacity: .7; }
+#sc-tarot .sc-t-x { padding: 8px 11px; }
+@media (prefers-reduced-motion: reduce) {
+    #sc-tarot .sc-t-card { transition: none; }
+}
+
+/* ── "is typing" ──
+   Under the last message: the character's cameo breathing light, a bubble with
+   three twinkling stars and the name. Added and removed by index.js. */
+#sc-typing {
+    --h-porc: var(--sc-porcelain, var(--SmartThemeQuoteColor, #f9dcec));
+    --h-dusty: var(--sc-dusty, #c7b3be);
+    --h-faded: var(--sc-faded, #9c8a95);
+    --h-soft: rgba(199, 179, 190, .22);
+    --h-glow: var(--sc-glow, rgba(249, 220, 236, .35));
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: none;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    padding: 10px 14px 14px;
+    animation: scx-typing-in .35s ease both;
+}
+#sc-typing .sc-cameo {
+    position: relative; flex: none; display: grid; place-items: center; overflow: hidden;
+    width: 40px; height: 50px; border-radius: 50%;
+    background: radial-gradient(circle at 50% 35%, #4a4246, #1d1b1a);
+    box-shadow: 0 0 0 1px var(--h-dusty), 0 0 0 3px rgba(22, 22, 22, .9), 0 0 0 4px var(--h-soft);
+    animation: scx-breathe 2.6s ease-in-out infinite;
+}
+#sc-typing .sc-cameo img { width: 100%; height: 100%; object-fit: cover; object-position: center 25%; display: block; }
+#sc-typing .sc-ini { font: 1.3rem var(--sc-name, "Italiana", Georgia, serif); color: var(--h-porc); }
+#sc-typing .sc-typing-stars {
+    display: flex; gap: 7px; padding: 9px 14px;
+    border: 1px solid var(--h-soft); border-radius: 3px 14px 14px 14px;
+    background: rgba(231, 227, 224, .04);
+    font: 11px/1 var(--mainFontFamily, sans-serif); color: var(--h-porc);
+}
+#sc-typing .sc-typing-stars span { animation: scx-twinkle 1.4s ease-in-out infinite; }
+#sc-typing .sc-typing-stars span:nth-child(2) { animation-delay: .2s; }
+#sc-typing .sc-typing-stars span:nth-child(3) { animation-delay: .4s; }
+#sc-typing .sc-typing-nm {
+    min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font: .78rem var(--sc-meta, "Special Elite", monospace); letter-spacing: .05em; color: var(--h-faded);
+}
+@keyframes scx-typing-in { from { opacity: 0; transform: translateY(4px); } }
+@keyframes scx-breathe { 50% { box-shadow: 0 0 0 1px var(--h-porc), 0 0 0 3px rgba(22, 22, 22, .9), 0 0 0 4px rgba(199, 179, 190, .45), 0 0 16px var(--h-glow); } }
+@keyframes scx-twinkle { 0%, 100% { opacity: .25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) {
+    #sc-typing, #sc-typing .sc-cameo, #sc-typing .sc-typing-stars span { animation: none; }
+    #sc-typing .sc-typing-stars span { opacity: .7; }
+}
+
+/* ── the waiting moth (stop button) ──
+   body[data-sc-wait] is set by index.js from "sent" until the first word of the
+   reply. The moth is drawn in three layers so the wings can move: the body and
+   antennae on the icon, a wing on each side of it. */
+body[data-generating][data-sc-wait] #mes_stop {
+    --moth: calc(var(--bottomFormIconSize, 1.9rem) * 1.05);   /* the same size as the moth on "send" */
+    display: grid !important;
+    flex: none;
+    place-items: center;
+    width: var(--bottomFormBlockSize, 2.4em);
+    height: var(--bottomFormBlockSize, 2.4em);
+    padding: 0;
+    position: relative;
+    perspective: 70px;
+    opacity: 1;
+    color: var(--sc-porcelain, var(--SmartThemeQuoteColor, #f9dcec));
+    animation: scx-glow 2.8s ease-in-out infinite;
+}
+body[data-generating][data-sc-wait] #mes_stop > i {
+    width: var(--moth); height: var(--moth);
+    background-color: currentColor;
+    -webkit-mask: var(--scx-moth-body) center / contain no-repeat;
+    mask: var(--scx-moth-body) center / contain no-repeat;
+}
+body[data-generating][data-sc-wait] #mes_stop > i::before { content: none; }
+body[data-generating][data-sc-wait] #mes_stop::before,
+body[data-generating][data-sc-wait] #mes_stop::after {
+    content: "";
+    position: absolute;
+    left: calc(50% - var(--moth) / 2);
+    top: calc(50% - var(--moth) / 2);
+    width: var(--moth); height: var(--moth);
+    background-color: currentColor;
+    transform-origin: 50% 50%;
+    animation: scx-wing-l 1.5s ease-in-out infinite alternate;
+}
+body[data-generating][data-sc-wait] #mes_stop::before {
+    -webkit-mask: var(--scx-moth-left) center / contain no-repeat;
+    mask: var(--scx-moth-left) center / contain no-repeat;
+}
+body[data-generating][data-sc-wait] #mes_stop::after {
+    -webkit-mask: var(--scx-moth-right) center / contain no-repeat;
+    mask: var(--scx-moth-right) center / contain no-repeat;
+    animation-name: scx-wing-r;
+}
+@keyframes scx-wing-l { from { transform: rotateY(0deg); } to { transform: rotateY(58deg); } }
+@keyframes scx-wing-r { from { transform: rotateY(0deg); } to { transform: rotateY(-58deg); } }
+@keyframes scx-glow {
+    0%, 100% { filter: drop-shadow(0 0 3px rgba(249, 220, 236, .45)); }
+    50%      { filter: drop-shadow(0 0 9px rgba(249, 220, 236, .9)); }
+}
+@media (prefers-reduced-motion: reduce) {
+    body[data-generating][data-sc-wait] #mes_stop,
+    body[data-generating][data-sc-wait] #mes_stop::before,
+    body[data-generating][data-sc-wait] #mes_stop::after { animation: none; }
+    body[data-generating][data-sc-wait] #mes_stop { filter: drop-shadow(0 0 6px rgba(249, 220, 236, .7)); }
+}
+
+/* ── loading screen ──
+   SillyTavern's start-up splash (logo, gear, "Initializing…") and every later
+   full-screen loader: fog, the moth flapping in place of the gear, the name. */
+#preloader { background: radial-gradient(70% 55% at 50% 42%, #2a2528, #161616 70%) !important; }
+#loader.splash-screen { gap: 14px; }
+#loader.splash-screen .splash-logo { display: none; }
+#loader.splash-screen::before {
+    content: "Shadow Cherry"; order: 1;
+    font: 2.1rem/1 var(--h-name); color: var(--h-dusty); text-shadow: 0 0 18px rgba(249, 220, 236, .3);
+}
+#loader.splash-screen::after {
+    content: "影色のさくらんぼ"; order: 2;
+    font: .72rem/1 var(--h-text); letter-spacing: .5em; margin-right: -.5em; color: var(--h-faded);
+}
+#loader.splash-screen .splash-message {
+    order: 3; margin-top: 18px;
+    font: .7rem var(--h-meta); letter-spacing: .24em; text-transform: uppercase; color: var(--h-faded); opacity: 1;
+}
+#loader #load-spinner {
+    --moth: 64px;
+    order: 0;
+    position: relative;
+    width: var(--moth); height: var(--moth);
+    font-size: 0;
+    color: var(--h-porc);
+    animation: none !important;          /* SillyTavern spins the gear */
+    filter: drop-shadow(0 0 10px rgba(249, 220, 236, .6));
+}
+#loader.splash-screen #load-spinner { margin-bottom: 18px; }
+/* the gear glyph gives way to the moth: body still, both wings folding in and out */
+#loader #load-spinner::before,
+#loader #load-spinner::after {
+    content: "" !important;
+    position: absolute; inset: 0;
+    background-color: currentColor;
+    -webkit-mask: var(--scx-moth-body) center / contain no-repeat;
+    mask: var(--scx-moth-body) center / contain no-repeat;
+}
+#loader #load-spinner::after {
+    -webkit-mask-image: var(--scx-moth-wings);
+    mask-image: var(--scx-moth-wings);
+    animation: scx-flap 1.5s ease-in-out infinite alternate;
+}
+@keyframes scx-flap { to { transform: scaleX(.42); } }
+@media (prefers-reduced-motion: reduce) {
+    #loader #load-spinner::after { animation: none; }
+}
+
+/* ── drop cap ──
+   The first letter of the character's message, in the name font, sunk two lines.
+   Switched on and off from the settings panel (body.sc-dropcap). */
+body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > p:first-of-type::first-letter {
+    font-family: var(--sc-name, "Italiana", "Cormorant Garamond", Georgia, serif);
+    font-style: normal;
+    font-weight: 400;
+    color: var(--sc-porcelain, var(--SmartThemeQuoteColor, #f9dcec));
+    text-shadow: 0 0 12px rgba(249, 220, 236, .35);
+}
+@supports (initial-letter: 2) or (-webkit-initial-letter: 2) {
+    body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > p:first-of-type::first-letter {
+        -webkit-initial-letter: 2;
+        initial-letter: 2;
+        margin-right: .14em;
+    }
+}
+@supports not ((initial-letter: 2) or (-webkit-initial-letter: 2)) {
+    body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > p:first-of-type::first-letter {
+        font-size: 1.7em;
+        line-height: 1;
+    }
+}
+
+/* @moth-assets (written by tools/assets.py) */
+:root {
+    --scx-moth-body: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M12 7.8V17%22/%3E%3Cpath d=%22M11.5 8C11 6 10 4.6 8.8 4%22/%3E%3Cg transform=%22translate%2824 0%29 scale%28-1 1%29%22%3E%3Cpath d=%22M11.5 8C11 6 10 4.6 8.8 4%22/%3E%3C/g%3E%3C/svg%3E");
+    --scx-moth-left: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M11.3 9.2C8.6 5.8 4.6 3.8 2.6 4.2C3 8.4 6.6 11.4 11.3 11.8%22/%3E%3Cpath d=%22M11.3 12.6C8.2 12.8 6.4 15.2 7.2 17.8L4.6 21.8L9.2 18.6C10.6 17.4 11.2 15.6 11.3 13.8%22/%3E%3C/svg%3E");
+    --scx-moth-right: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cg transform=%22translate%2824 0%29 scale%28-1 1%29%22%3E%3Cpath d=%22M11.3 9.2C8.6 5.8 4.6 3.8 2.6 4.2C3 8.4 6.6 11.4 11.3 11.8%22/%3E%3Cpath d=%22M11.3 12.6C8.2 12.8 6.4 15.2 7.2 17.8L4.6 21.8L9.2 18.6C10.6 17.4 11.2 15.6 11.3 13.8%22/%3E%3C/g%3E%3C/svg%3E");
+    --scx-moth-wings: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M11.3 9.2C8.6 5.8 4.6 3.8 2.6 4.2C3 8.4 6.6 11.4 11.3 11.8%22/%3E%3Cpath d=%22M11.3 12.6C8.2 12.8 6.4 15.2 7.2 17.8L4.6 21.8L9.2 18.6C10.6 17.4 11.2 15.6 11.3 13.8%22/%3E%3Cg transform=%22translate%2824 0%29 scale%28-1 1%29%22%3E%3Cpath d=%22M11.3 9.2C8.6 5.8 4.6 3.8 2.6 4.2C3 8.4 6.6 11.4 11.3 11.8%22/%3E%3Cpath d=%22M11.3 12.6C8.2 12.8 6.4 15.2 7.2 17.8L4.6 21.8L9.2 18.6C10.6 17.4 11.2 15.6 11.3 13.8%22/%3E%3C/g%3E%3C/svg%3E");
+    --scx-moth: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M12 7.8V17%22/%3E%3Cpath d=%22M11.3 9.2C8.6 5.8 4.6 3.8 2.6 4.2C3 8.4 6.6 11.4 11.3 11.8%22/%3E%3Cpath d=%22M11.3 12.6C8.2 12.8 6.4 15.2 7.2 17.8L4.6 21.8L9.2 18.6C10.6 17.4 11.2 15.6 11.3 13.8%22/%3E%3Cpath d=%22M11.5 8C11 6 10 4.6 8.8 4%22/%3E%3Cg transform=%22translate%2824 0%29 scale%28-1 1%29%22%3E%3Cpath d=%22M11.3 9.2C8.6 5.8 4.6 3.8 2.6 4.2C3 8.4 6.6 11.4 11.3 11.8%22/%3E%3Cpath d=%22M11.3 12.6C8.2 12.8 6.4 15.2 7.2 17.8L4.6 21.8L9.2 18.6C10.6 17.4 11.2 15.6 11.3 13.8%22/%3E%3Cpath d=%22M11.5 8C11 6 10 4.6 8.8 4%22/%3E%3C/g%3E%3C/svg%3E");
+}
+/* @end-moth-assets */
