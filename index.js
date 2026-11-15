@@ -1089,6 +1089,28 @@ const TAROT_BACK = `<svg viewBox="0 0 100 160" aria-hidden="true">
     <path d="M15 15L21 15M15 15L15 21M85 15L79 15M85 15L85 21M15 145L21 145M15 145L15 139M85 145L79 145M85 145L85 139" stroke-width=".7"/>
 </svg>`;
 let tarotEl = null, tarotLast = null, tarotPick = null, tarotFocus = null;
+let cleanupTarotViewport = () => {};
+
+// A phone's visible area can shrink or move independently of the layout
+// viewport (browser bars, keyboard, zoom). Keep the overlay inside that area.
+function watchTarotViewport(el) {
+    const viewport = window.visualViewport;
+    const update = () => {
+        el.style.setProperty('--sc-t-viewport-height', `${viewport?.height || window.innerHeight}px`);
+        el.style.setProperty('--sc-t-viewport-width', `${viewport?.width || window.innerWidth}px`);
+        el.style.setProperty('--sc-t-viewport-top', `${viewport?.offsetTop || 0}px`);
+        el.style.setProperty('--sc-t-viewport-left', `${viewport?.offsetLeft || 0}px`);
+    };
+    update();
+    window.addEventListener('resize', update, { passive: true });
+    viewport?.addEventListener('resize', update, { passive: true });
+    viewport?.addEventListener('scroll', update, { passive: true });
+    return () => {
+        window.removeEventListener('resize', update);
+        viewport?.removeEventListener('resize', update);
+        viewport?.removeEventListener('scroll', update);
+    };
+}
 
 function tarotPool() {
     const s = getSettings();
@@ -1151,6 +1173,7 @@ function openTarot() {
             <button type="button" class="sc-btn sc-t-x" data-t="close" aria-label="${T.closeT}">✕</button>
         </div>`;
     document.body.appendChild(tarotEl);
+    cleanupTarotViewport = watchTarotViewport(tarotEl);
     dealTarot();
     requestAnimationFrame(() => tarotEl?.classList.add('sc-t-in'));
     setTimeout(() => { flipTarot(true); tarotEl?.querySelector('[data-t="open"]')?.focus({ preventScroll: true }); }, 650);
@@ -1185,6 +1208,8 @@ function openTarot() {
 function closeTarot() {
     const el = tarotEl;
     if (!el) return;
+    cleanupTarotViewport();
+    cleanupTarotViewport = () => {};
     tarotEl = null;
     el.classList.remove('sc-t-in');
     setTimeout(() => el.remove(), 300);

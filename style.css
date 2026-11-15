@@ -344,20 +344,36 @@
 
 /* ── draw a card ── */
 #sc-tarot {
-    position: fixed; inset: 0; z-index: 9990;
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
-    padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
+    --sc-t-viewport-height: 100vh;
+    --sc-t-viewport-width: 100vw;
+    --sc-t-pad-top: max(20px, env(safe-area-inset-top));
+    --sc-t-pad-bottom: max(20px, env(safe-area-inset-bottom));
+    position: fixed; inset: auto; z-index: 9990;
+    top: var(--sc-t-viewport-top, 0px); left: var(--sc-t-viewport-left, 0px);
+    width: var(--sc-t-viewport-width); height: var(--sc-t-viewport-height); box-sizing: border-box;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 18px;
+    overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+    padding: var(--sc-t-pad-top) max(16px, env(safe-area-inset-right)) var(--sc-t-pad-bottom) max(16px, env(safe-area-inset-left));
     background: radial-gradient(60% 50% at 50% 45%, rgba(40, 34, 38, .78), rgba(10, 10, 10, .9));
     -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
     color: var(--h-bone); font-family: var(--h-text);
     opacity: 0; transition: opacity .3s ease;
 }
+@supports (height: 100dvh) {
+    #sc-tarot { --sc-t-viewport-height: 100dvh; }
+}
 #sc-tarot.sc-t-in { opacity: 1; }
 #sc-tarot button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 #sc-tarot button:focus-visible { outline: 2px solid var(--h-porc); outline-offset: 2px; }
-#sc-tarot .sc-t-stage { perspective: 1100px; }
+#sc-tarot .sc-t-stage {
+    /* Reserve room for the reading and buttons before sizing the card.
+       Auto margins center the group only while it fits; overflow starts at
+       the top and stays reachable by scrolling, including with larger text. */
+    flex: none; margin-top: auto; max-width: 100%; perspective: 1100px;
+    width: min(62vw, 230px, max(96px, calc((var(--sc-t-viewport-height) - var(--sc-t-pad-top) - var(--sc-t-pad-bottom) - 9rem) * .625)));
+}
 #sc-tarot .sc-t-card {
-    position: relative; width: min(62vw, 230px); aspect-ratio: 100 / 160;
+    position: relative; width: 100%; aspect-ratio: 100 / 160;
     transform-style: preserve-3d; transition: transform .7s cubic-bezier(.3, .7, .2, 1);
     transform: translateY(14px) rotateY(0deg);
 }
@@ -391,16 +407,17 @@
 }
 #sc-tarot .sc-t-arc { font: .58rem var(--h-meta); letter-spacing: .24em; margin-right: -.24em; text-transform: uppercase; color: var(--h-faded); text-align: center; }
 #sc-tarot .sc-t-read {
-    margin: 0; max-width: 300px; min-height: 2.9em; text-align: center;
+    flex: none; margin: 0; max-width: min(300px, 100%); min-height: 2.9em; text-align: center; overflow-wrap: anywhere;
     font: italic .95rem/1.45 var(--h-text); color: var(--h-mauve);
     opacity: 0; transition: opacity .4s ease .35s;
 }
 #sc-tarot .sc-t-read b { font-weight: 400; color: var(--h-porc); }
 #sc-tarot.sc-t-up .sc-t-read { opacity: 1; }
-#sc-tarot .sc-t-acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+#sc-tarot .sc-t-acts { flex: none; max-width: 100%; margin-bottom: auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 #sc-tarot .sc-btn {
     font: .68rem var(--h-meta); letter-spacing: .14em; text-transform: uppercase;
-    color: var(--h-dusty); border: 1px solid var(--h-line); padding: 8px 12px; white-space: nowrap;
+    color: var(--h-dusty); border: 1px solid var(--h-line); padding: 8px 12px;
+    max-width: 100%; box-sizing: border-box; white-space: normal; overflow-wrap: anywhere; text-align: center;
 }
 #sc-tarot .sc-btn.sc-fill { color: var(--h-ink); background: var(--h-dusty); border-color: var(--h-dusty); }
 #sc-tarot .sc-btn:active { opacity: .7; }
