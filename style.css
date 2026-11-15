@@ -131,6 +131,29 @@
 }
 #sc-home .sc-chips button[aria-pressed="true"] { color: var(--h-ink); background: var(--h-dusty); border-color: var(--h-dusty); }
 
+/* the characters' tags: one sideways row of chips under the search box */
+#sc-home .sc-tagrow {
+    display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+    margin: -4px 0 0; padding: 2px 24px 2px 0;
+    -webkit-mask: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+    mask: linear-gradient(90deg, #000 calc(100% - 28px), transparent);
+}
+#sc-home .sc-tagrow::-webkit-scrollbar { display: none; }
+#sc-home .sc-tagrow button {
+    flex: none; display: inline-flex; align-items: baseline; gap: 6px;
+    padding: 3px 10px; border: 1px solid var(--h-soft);
+    font: italic .8rem/1.3 var(--h-text); color: var(--h-mauve); white-space: nowrap;
+}
+#sc-home .sc-tagrow button::before { content: "✧"; font: normal 8px var(--mainFontFamily, sans-serif); color: var(--h-faded); }
+#sc-home .sc-tag-n { font: normal .56rem var(--h-meta); letter-spacing: .08em; color: var(--h-faded); }
+#sc-home .sc-tagrow button[aria-pressed="true"] { color: var(--h-ink); background: var(--h-dusty); border-color: var(--h-dusty); }
+#sc-home .sc-tagrow button[aria-pressed="true"]::before { content: "✦"; color: var(--h-ink); }
+#sc-home .sc-tagrow button[aria-pressed="true"] .sc-tag-n { color: rgba(22, 22, 22, .65); }
+#sc-home .sc-tagrow button:active { opacity: .7; }
+@media (hover: hover) { #sc-home .sc-tagrow button:not([aria-pressed="true"]):hover { color: var(--h-porc); border-color: var(--h-line); } }
+/* on a character's page the tags wrap under the name */
+#sc-home .sc-ptags { flex-wrap: wrap; overflow: visible; margin: -4px 0 0; padding: 0; -webkit-mask: none; mask: none; }
+
 /* section header: label · line · optional "all →" */
 #sc-home .sc-sec { display: flex; align-items: baseline; gap: 10px; margin-top: 2px; }
 #sc-home .sc-sec > span { font: .66rem var(--h-meta); letter-spacing: .2em; text-transform: uppercase; color: var(--h-faded); white-space: nowrap; }

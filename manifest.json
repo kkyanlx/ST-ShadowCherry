@@ -1,13 +1,13 @@
 {
     "display_name": "✦ Shadow Cherry",
-    "description": "Shadow Cherry home: sideways rows of character cameos with continue, search, archive, search inside chats and a tarot draw; an “is typing” cameo, a waiting moth, a loading screen, a drop cap and a “close chat” cross.",
+    "description": "Shadow Cherry home: sideways rows of character cameos with continue, search, tags, archive, search inside chats and a tarot draw; an “is typing” cameo, a waiting moth, a loading screen, a drop cap and a “close chat” cross.",
     "loading_order": 200,
     "requires": [],
     "optional": [],
     "js": "index.js",
     "css": "style.css",
     "author": "ewwn1h",
-    "version": "1.5.3",
+    "version": "1.6.0",
     "auto_update": true,
     "homePage": "https://github.com/kkyanlx/ST-ShadowCherry"
 }
