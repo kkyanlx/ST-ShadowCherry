@@ -65,6 +65,7 @@ const T = RU ? {
     panelTyping: 'Камея «пишет…» под последним сообщением', typing: (n) => `${n} пишет…`,
     panelHint: 'Подсказка в поле ввода', hint: 'шепни в туман…', hintEmpty: 'пусто — без подсказки',
     tagged: 'по тегам', clearTags: 'сбросить ×', tagsLabel: 'теги', panelTags: 'Теги персонажей на полке',
+    tagsPrev: 'Прокрутить теги влево', tagsNext: 'Прокрутить теги вправо',
     chatSearch: 'найти в чатах…', searching: 'ищу…', noHits: 'Ничего не нашлось.', moreChats: 'ещё чаты',
     hitsMore: (n) => `и ещё ${n}`, inTitle: 'совпадение в названии или в скрытом тексте',
     draw: 'вытянуть карту', openChat: 'открыть чат', startChat: 'начать чат', drawAgain: 'ещё карту', closeT: 'закрыть',
@@ -100,6 +101,7 @@ const T = RU ? {
     panelTyping: '“Is typing” cameo under the last message', typing: (n) => `${n} is typing…`,
     panelHint: 'Message box hint', hint: 'whisper into the fog…', hintEmpty: 'empty means no hint',
     tagged: 'by tags', clearTags: 'clear ×', tagsLabel: 'tags', panelTags: 'Character tags on the shelf',
+    tagsPrev: 'Scroll tags left', tagsNext: 'Scroll tags right',
     chatSearch: 'search in chats…', searching: 'searching…', noHits: 'Nothing found.', moreChats: 'more chats',
     hitsMore: (n) => `and ${n} more`, inTitle: 'matched in the name or in hidden text',
     draw: 'draw a card', openChat: 'open chat', startChat: 'start a chat', drawAgain: 'draw again', closeT: 'close',
@@ -222,7 +224,70 @@ function tagRowHtml(list) {
     for (const id of view.tags) if (!count.has(id) && book.byId.has(id)) count.set(id, 0);
     if (!count.size) return '';
     const ids = [...count.keys()].sort((a, b) => count.get(b) - count.get(a) || String(book.byId.get(a).name).localeCompare(String(book.byId.get(b).name)));
-    return `<div class="sc-tagrow" role="group" aria-label="${T.tagsLabel}">${ids.map((id) => `<button type="button" data-tag="${esc(id)}" aria-pressed="${view.tags.includes(id)}">${esc(book.byId.get(id).name)}<span class="sc-tag-n">${count.get(id)}</span></button>`).join('')}</div>`;
+    return `<div class="sc-tags">
+        <button type="button" class="sc-tag-arrow" data-act="tags-prev" aria-label="${T.tagsPrev}" title="${T.tagsPrev}" aria-controls="sc-shelf-tags" disabled><svg viewBox="0 0 12 14" aria-hidden="true"><path d="M8 2L3 7l5 5"/></svg></button>
+        <div id="sc-shelf-tags" class="sc-tagrow" role="group" aria-label="${T.tagsLabel}">${ids.map((id) => `<button type="button" data-tag="${esc(id)}" aria-pressed="${view.tags.includes(id)}">${esc(book.byId.get(id).name)}<span class="sc-tag-n">${count.get(id)}</span></button>`).join('')}</div>
+        <button type="button" class="sc-tag-arrow" data-act="tags-next" aria-label="${T.tagsNext}" title="${T.tagsNext}" aria-controls="sc-shelf-tags" disabled><svg viewBox="0 0 12 14" aria-hidden="true"><path d="M3 2l5 5-5 5"/></svg></button>
+    </div>`;
+}
+
+// Keep the touch scroller native. Desktop arrows and vertical mouse-wheel
+// scrolling share it; at either end, the wheel can scroll the page again.
+let cleanupTagScroller = () => {};
+function setupTagScroller() {
+    cleanupTagScroller();
+    cleanupTagScroller = () => {};
+    const wrap = homeEl?.querySelector('.sc-tags');
+    const row = wrap?.querySelector('.sc-tagrow');
+    if (!row) return;
+    const prev = wrap.querySelector('[data-act="tags-prev"]');
+    const next = wrap.querySelector('[data-act="tags-next"]');
+    const update = () => {
+        if (!row.isConnected) return;
+        // Measure against the full wrapper so the arrows disappear as soon as
+        // the tags fit without them, including after a window resize.
+        wrap.dataset.overflow = String(row.scrollWidth > wrap.clientWidth + 1);
+        const max = row.scrollWidth - row.clientWidth;
+        prev.disabled = row.scrollLeft <= 1;
+        next.disabled = row.scrollLeft >= max - 1;
+        wrap.dataset.canPrev = String(!prev.disabled);
+        wrap.dataset.canNext = String(!next.disabled);
+    };
+    const onWheel = (e) => {
+        // Preserve pinch-to-zoom, Shift+wheel and native horizontal trackpad input.
+        if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.shiftKey || !e.deltaY || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+        const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? row.clientWidth : 1;
+        const delta = e.deltaY * scale;
+        const max = row.scrollWidth - row.clientWidth;
+        if (!e.cancelable || (delta > 0 ? row.scrollLeft >= max - 1 : row.scrollLeft <= 1)) return;
+        e.preventDefault();
+        row.scrollLeft += delta;
+    };
+    row.addEventListener('scroll', update, { passive: true });
+    row.addEventListener('wheel', onWheel, { passive: false });
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(update) : null;
+    observer?.observe(wrap);
+    observer?.observe(row);
+    window.addEventListener('resize', update);
+    document.fonts?.addEventListener('loadingdone', update);
+    update();
+    document.fonts?.ready.then(update);
+    cleanupTagScroller = () => {
+        observer?.disconnect();
+        row.removeEventListener('scroll', update);
+        row.removeEventListener('wheel', onWheel);
+        window.removeEventListener('resize', update);
+        document.fonts?.removeEventListener('loadingdone', update);
+    };
+}
+
+function scrollTags(direction) {
+    const row = homeEl?.querySelector('.sc-tags .sc-tagrow');
+    if (!row) return;
+    row.scrollBy({
+        left: direction * row.clientWidth * .75,
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    });
 }
 
 /* ── markup pieces ────────────────────────────────────── */
@@ -649,9 +714,11 @@ const FOOT = '<div class="sc-foot" aria-hidden="true">✦</div>';
 
 function render() {
     if (!homeEl || !homeEl.isConnected) return;
+    cleanupTagScroller();
     if (view.mode === 'page' && !characterBy(view.avatar)) view.mode = 'shelf';
     homeEl.dataset.mode = view.mode;
     homeEl.innerHTML = (view.mode === 'page' ? pageHtml() : view.mode === 'all' ? allHtml() : shelfHtml()) + FOOT;
+    setupTagScroller();
     if (view.mode !== 'page') loadCounts();
     if (view.mode === 'shelf') loadLastSnip();
 }
@@ -740,6 +807,7 @@ function mount() {
     const s = getSettings();
     const want = s.home && isWelcomeShowing(chatEl);
     if (!want) {
+        cleanupTagScroller();
         if (homeEl?.isConnected) homeEl.remove();
         return;
     }
@@ -919,6 +987,8 @@ function onClick(e) {
     const avatar = view.avatar;
 
     switch (act) {
+        case 'tags-prev': scrollTags(-1); break;
+        case 'tags-next': scrollTags(1); break;
         case 'archive-view': view.archive = !view.archive; view.query = ''; view.tags = []; render(); break;
         case 'clear-tags': view.tags = []; syncTagRow(); renderBody(); break;
         case 'all': view.mode = 'all'; render(); document.getElementById('chat').scrollTop = 0; break;
