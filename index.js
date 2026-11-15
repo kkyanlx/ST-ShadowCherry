@@ -99,7 +99,7 @@ const T = RU ? {
     close: 'Close chat', panelClose: '“Close chat” cross on the top bar',
     panelHome: 'Custom home (shelf)', panelDropCap: 'Drop cap in the character’s messages',
     panelTyping: '“Is typing” cameo under the last message', typing: (n) => `${n} is typing…`,
-    panelHint: 'Message box hint', hint: 'whisper into the fog…', hintEmpty: 'empty means no hint',
+    panelHint: 'Message box hint', hint: '<3', hintEmpty: 'empty means no hint',
     tagged: 'by tags', clearTags: 'clear ×', tagsLabel: 'tags', panelTags: 'Character tags on the shelf',
     tagsPrev: 'Scroll tags left', tagsNext: 'Scroll tags right',
     chatSearch: 'search in chats…', searching: 'searching…', noHits: 'Nothing found.', moreChats: 'more chats',
