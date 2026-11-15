@@ -1252,8 +1252,7 @@ function showTyping(opts) {
     typingEl.setAttribute('role', 'status');
     typingEl.setAttribute('aria-label', T.typing(c.name));
     typingEl.innerHTML = `${cameo(c, 'sc-typing-cameo')}
-        <span class="sc-typing-stars" aria-hidden="true"><span>✦</span><span>✧</span><span>✦</span></span>
-        <span class="sc-typing-nm">${esc(c.name)}</span>`;
+        <span class="sc-typing-stars" aria-hidden="true"><span>✦</span><span>✧</span><span>✦</span></span>`;
     chatEl.appendChild(typingEl);
     if (atBottom) requestAnimationFrame(() => { chatEl.scrollTop = chatEl.scrollHeight; });
 }
