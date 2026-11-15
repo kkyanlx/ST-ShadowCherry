@@ -273,6 +273,8 @@
 .sc-settings .inline-drawer-header b { font-weight: 600; letter-spacing: .02em; }
 .sc-settings .sc-star { color: var(--SmartThemeQuoteColor, #f9dcec); font-size: .8em; }
 .sc-settings .inline-drawer-content { display: flex; flex-direction: column; gap: 8px; padding-block: 6px 10px; }
+.sc-settings .sc-field { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
+.sc-settings .sc-field input { width: 100%; box-sizing: border-box; margin: 0; }
 
 /* ── draw a card ── */
 #sc-tarot {
@@ -395,7 +397,8 @@
    reply. The moth is drawn in three layers so the wings can move: the body and
    antennae on the icon, a wing on each side of it. */
 body[data-generating][data-sc-wait] #mes_stop {
-    --moth: calc(var(--bottomFormIconSize, 1.9rem) * 1.05);   /* the same size as the moth on "send" */
+    /* the same size as the moth on "send": the theme's input-row icon size, times the moth's own 1.05 */
+    --moth: calc(var(--sc-input-ico, calc(var(--mainFontSize, 15px) * 1.32)) * 1.05);
     display: grid !important;
     flex: none;
     place-items: center;
@@ -499,7 +502,10 @@ body[data-generating][data-sc-wait] #mes_stop::after {
 /* ── drop cap ──
    The first letter of the character's message, in the name font, sunk two lines.
    Switched on and off from the settings panel (body.sc-dropcap). */
-body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > p:first-of-type::first-letter {
+/* The first paragraph that has text: an info block's regex can leave an empty
+   <p> in front of it, and a cap on that one would never show. :is() lets a browser
+   that does not know "of" keep the plain first paragraph. */
+body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty)))::first-letter {
     font-family: var(--sc-name, "Italiana", "Cormorant Garamond", Georgia, serif);
     font-style: normal;
     font-weight: 400;
@@ -507,14 +513,14 @@ body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > 
     text-shadow: 0 0 12px rgba(249, 220, 236, .35);
 }
 @supports (initial-letter: 2) or (-webkit-initial-letter: 2) {
-    body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > p:first-of-type::first-letter {
+    body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty)))::first-letter {
         -webkit-initial-letter: 2;
         initial-letter: 2;
         margin-right: .14em;
     }
 }
 @supports not ((initial-letter: 2) or (-webkit-initial-letter: 2)) {
-    body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > p:first-of-type::first-letter {
+    body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty)))::first-letter {
         font-size: 1.7em;
         line-height: 1;
     }

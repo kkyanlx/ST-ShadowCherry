@@ -17,6 +17,7 @@ const DEFAULTS = Object.freeze({
     closeButton: true,
     dropCap: true,         // big first letter in the character's messages
     typing: true,          // "is typing": cameo and stars under the last message
+    hint: null,            // text in the empty message box; null = ours, '' = nothing
     filter: 'recent',      // sort order of the "all" view: recent · frequent · name
 });
 
@@ -61,6 +62,7 @@ const T = RU ? {
     close: 'Закрыть чат', panelClose: 'Крестик «закрыть чат» на верхней панели',
     panelHome: 'Своя главная (полка)', panelDropCap: 'Буквица в сообщениях персонажа',
     panelTyping: 'Камея «пишет…» под последним сообщением', typing: (n) => `${n} пишет…`,
+    panelHint: 'Подсказка в поле ввода', hint: 'шепни в туман…', hintEmpty: 'пусто — без подсказки',
     chatSearch: 'найти в чатах…', searching: 'ищу…', noHits: 'Ничего не нашлось.', moreChats: 'ещё чаты',
     hitsMore: (n) => `и ещё ${n}`, inTitle: 'совпадение в названии или в скрытом тексте',
     draw: 'вытянуть карту', openChat: 'открыть чат', startChat: 'начать чат', drawAgain: 'ещё карту', closeT: 'закрыть',
@@ -94,6 +96,7 @@ const T = RU ? {
     close: 'Close chat', panelClose: '“Close chat” cross on the top bar',
     panelHome: 'Custom home (shelf)', panelDropCap: 'Drop cap in the character’s messages',
     panelTyping: '“Is typing” cameo under the last message', typing: (n) => `${n} is typing…`,
+    panelHint: 'Message box hint', hint: 'whisper into the fog…', hintEmpty: 'empty means no hint',
     chatSearch: 'search in chats…', searching: 'searching…', noHits: 'Nothing found.', moreChats: 'more chats',
     hitsMore: (n) => `and ${n} more`, inTitle: 'matched in the name or in hidden text',
     draw: 'draw a card', openChat: 'open chat', startChat: 'start a chat', drawAgain: 'draw again', closeT: 'close',
@@ -1101,6 +1104,59 @@ function onChatGrow(records) {
     typingEl.parentElement.appendChild(typingEl);
 }
 
+/* ── one reply being waited for ───────────────────────── */
+// The moth and the "is typing" cameo start when SillyTavern announces a generation
+// and stop on its events. But it can still call the generation off without an event
+// (no API connection, server unreachable, a backend that cannot stream), so two
+// more things end the wait: <body data-generating> going away, and that flag not
+// having appeared a few seconds after the announcement.
+const START_GRACE = 8000;
+const LATE_START = 60000;
+let turn = null;          // { opts, typing, at } until the reply begins to arrive or the turn is called off
+let turnTimer = null;
+const isGenerating = () => document.body.dataset.generating === 'true';
+
+function turnBegan(type, opts) {
+    if (ctx().onlineStatus === 'no_connection') return;      // nothing will be generated
+    turn = { opts, typing: type !== 'impersonate', at: Date.now() };   // impersonation writes your own message
+    waiting(true);
+    if (turn.typing) showTyping(opts);
+    clearTimeout(turnTimer);
+    turnTimer = setTimeout(() => { if (!isGenerating()) { waiting(false); hideTyping(); } }, START_GRACE);
+}
+
+function turnOver() {
+    turn = null;
+    clearTimeout(turnTimer);
+    waiting(false);
+    hideTyping();
+}
+
+function onGeneratingFlag() {
+    if (!isGenerating()) { turnOver(); return; }
+    // a slow server: the generation started after the grace period had ended the wait
+    if (!turn || document.body.dataset.scWait) return;
+    if (Date.now() - turn.at > LATE_START) { turn = null; return; }      // too late to be the same turn
+    waiting(true);
+    if (turn.typing) showTyping(turn.opts);
+}
+
+/* ── message box hint ─────────────────────────────────── */
+// SillyTavern writes "Type a message, or /? for help" into the empty box whenever
+// the API connects, taking it from the box's connected_text attribute; the hint
+// replaces that text. "Not connected to API!" stays, it is a real warning.
+let hintShown = null;
+function applyHint() {
+    const box = document.getElementById('send_textarea');
+    if (!box) return;
+    if (box.dataset.scOrig === undefined) box.dataset.scOrig = box.getAttribute('connected_text') || '';
+    const s = getSettings();
+    const text = typeof s.hint === 'string' ? s.hint : T.hint;
+    box.setAttribute('connected_text', text);
+    if (box.placeholder === box.dataset.scOrig || box.placeholder === hintShown) box.placeholder = text;
+    hintShown = text;
+}
+
 /* ── close-chat cross on the top bar ──────────────────── */
 // Sits before the first top-bar button and shows only while a chat is open.
 // It is not a .drawer-toggle, so SillyTavern's drawer logic leaves it alone.
@@ -1165,6 +1221,10 @@ function buildPanel() {
                         <input id="sc-typing-on" type="checkbox">
                         <span>${T.panelTyping}</span>
                     </label>
+                    <label class="sc-field" for="sc-hint">
+                        <span>${T.panelHint}</span>
+                        <input id="sc-hint" class="text_pole" type="text" placeholder="${T.hintEmpty}" autocomplete="off">
+                    </label>
                 </div>
             </div>
         </div>`);
@@ -1181,6 +1241,9 @@ function buildPanel() {
     const typingBox = document.getElementById('sc-typing-on');
     typingBox.checked = !!s.typing;
     typingBox.addEventListener('change', () => { s.typing = typingBox.checked; save(); if (!s.typing) hideTyping(); });
+    const hintBox = document.getElementById('sc-hint');
+    hintBox.value = typeof s.hint === 'string' ? s.hint : T.hint;
+    hintBox.addEventListener('input', () => { s.hint = hintBox.value; save(); applyHint(); });
 }
 
 // the drop cap is drawn by style.css; this only switches it on and off
@@ -1193,6 +1256,7 @@ function init() {
     getSettings();
     buildPanel();
     applyDropCap();
+    applyHint();
 
     const chatEl = document.getElementById('chat');
     if (chatEl) {
@@ -1207,16 +1271,12 @@ function init() {
     // the character whose chat is open: its count is what changes while the home is away
     const current = () => ctx().characters?.[ctx().characterId]?.avatar;
 
-    on(E.CHAT_CHANGED, () => { waiting(false); hideTyping(); closeTarot(); lastSnips.clear(); chatCounts.delete(current()); setTimeout(() => { mount(); updateCloseButton(); }, 0); });
-    // the moth: from "sent" to the first word of the reply; quiet background generations do not count
-    on(E.GENERATION_AFTER_COMMANDS, (type, opts, dryRun) => {
-        if (dryRun || type === 'quiet') return;
-        waiting(true);
-        // the "is typing" cameo is for the character's reply; impersonation writes your own message
-        if (type !== 'impersonate') showTyping(opts);
-    });
-    on(E.STREAM_TOKEN_RECEIVED, (text) => { if (String(text ?? '').trim()) { waiting(false); hideTyping(); } });
-    for (const type of [E.MESSAGE_RECEIVED, E.GENERATION_ENDED, E.GENERATION_STOPPED]) on(type, () => { waiting(false); hideTyping(); });
+    on(E.CHAT_CHANGED, () => { turnOver(); closeTarot(); lastSnips.clear(); chatCounts.delete(current()); setTimeout(() => { mount(); updateCloseButton(); }, 0); });
+    // the moth and the cameo: from "sent" to the first word of the reply; quiet background generations do not count
+    on(E.GENERATION_AFTER_COMMANDS, (type, opts, dryRun) => { if (!dryRun && type !== 'quiet') turnBegan(type, opts); });
+    on(E.STREAM_TOKEN_RECEIVED, (text) => { if (String(text ?? '').trim()) turnOver(); });
+    for (const type of [E.MESSAGE_RECEIVED, E.GENERATION_ENDED, E.GENERATION_STOPPED]) on(type, turnOver);
+    new MutationObserver(onGeneratingFlag).observe(document.body, { attributes: true, attributeFilter: ['data-generating'] });
     on(E.CHAT_DELETED, (name) => { const a = current(); if (a) { chatCounts.delete(a); dropFav(a, `${name}.jsonl`); } lastSnips.clear(); redraw(); });
     on(E.CHAT_RENAMED, (d) => { if (!renaming && d?.avatarId && !d.groupId) moveFav(d.avatarId, d.oldFileName, d.newFileName); });
     on(E.CHARACTER_EDITED, redraw);
