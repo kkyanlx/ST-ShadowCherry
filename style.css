@@ -5,7 +5,7 @@
     under other themes. */
 
 /* the theme's fonts, for the loading screen: it shows before the theme is applied */
-@import url("https://fonts.googleapis.com/css2?family=Italiana&family=Special+Elite&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500&family=Italiana&family=Special+Elite&display=swap");
 
 #sc-home,
 #sc-tarot,
@@ -590,6 +590,12 @@ body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > 
     font-weight: 400;
     color: var(--sc-porcelain, var(--SmartThemeQuoteColor, #f9dcec));
     text-shadow: 0 0 12px rgba(249, 220, 236, .35);
+}
+/* Italiana has no Cyrillic: a message that starts with a Russian (or other non-Latin)
+   letter is marked by index.js and gets a cap font that has that letter */
+body.sc-dropcap #chat .mes[data-sc-cap="alt"][is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty)))::first-letter {
+    font-family: var(--sc-cap-alt, "Cormorant Garamond", Georgia, serif);
+    font-weight: 500;
 }
 @supports (initial-letter: 2) or (-webkit-initial-letter: 2) {
     body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty)))::first-letter {
