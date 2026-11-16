@@ -579,32 +579,54 @@ body[data-generating][data-sc-wait] #mes_stop::after {
 }
 
 /* ── drop cap ──
-   The first letter of the character's message, in the name font, sunk two lines.
-   Switched on and off from the settings panel (body.sc-dropcap). */
-/* The first paragraph that has text: an info block's regex can leave an empty
-   <p> in front of it, and a cap on that one would never show. :is() lets a browser
-   that does not know "of" keep the plain first paragraph. */
+   The first letter of the character's message, in the name font, two lines tall.
+   Switched on and off from the settings panel (body.sc-dropcap).
+   The first paragraph that has text: an info block's regex can leave an empty <p>
+   in front of it. :is() lets a browser that does not know "of" keep the first <p>.
+
+   The letter floats and is sized from the paragraph's own line height, not with the
+   browser's initial-letter: that one measures the text font, and a custom message
+   font (or Safari) can drop the letter a whole line. The cap's own font is pinned
+   with !important so a "font for everything" rule cannot swap it; --sc-cap-k is that
+   font's capital height (Italiana .70, Cormorant .636), measured from the font files. */
+@property --sc-cap-L { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --sc-cap-E { syntax: "<length>"; inherits: true; initial-value: 0px; }
 body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty)))::first-letter {
-    font-family: var(--sc-name, "Italiana", "Cormorant Garamond", Georgia, serif);
-    font-style: normal;
-    font-weight: 400;
+    font-family: var(--sc-name, "Italiana", "Cormorant Garamond", Georgia, serif) !important;
+    font-style: normal !important;
+    font-weight: 400 !important;
     color: var(--sc-porcelain, var(--SmartThemeQuoteColor, #f9dcec));
     text-shadow: 0 0 12px rgba(249, 220, 236, .35);
 }
 /* Italiana has no Cyrillic: a message that starts with a Russian (or other non-Latin)
    letter is marked by index.js and gets a cap font that has that letter */
 body.sc-dropcap #chat .mes[data-sc-cap="alt"][is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty)))::first-letter {
-    font-family: var(--sc-cap-alt, "Cormorant Garamond", Georgia, serif);
-    font-weight: 500;
+    font-family: var(--sc-cap-alt, "Cormorant Garamond", Georgia, serif) !important;
+    font-weight: 500 !important;
 }
-@supports (initial-letter: 2) or (-webkit-initial-letter: 2) {
-    body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty)))::first-letter {
-        -webkit-initial-letter: 2;
-        initial-letter: 2;
-        margin-right: .14em;
+@supports (height: 1lh) {
+    body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty))) {
+        --sc-cap-L: 1lh;
+        --sc-cap-E: 1em;
+        --sc-cap-k: .7;
     }
+    body.sc-dropcap #chat .mes[data-sc-cap="alt"][is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty))) {
+        --sc-cap-k: .636;
+    }
+    body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty)))::first-letter {
+        float: left;
+        font-size: calc((var(--sc-cap-L) + .66 * var(--sc-cap-E)) / var(--sc-cap-k));
+        line-height: var(--sc-cap-k);
+        margin: calc(var(--sc-cap-L) / 2 - .36 * var(--sc-cap-E)) .08em 0 0;
+        padding: 0;
+        -webkit-initial-letter: normal;
+        initial-letter: normal;
+    }
+    /* Cormorant's capitals carry wider side space of their own */
+    body.sc-dropcap #chat .mes[data-sc-cap="alt"][is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty)))::first-letter { margin-right: 0; }
 }
-@supports not ((initial-letter: 2) or (-webkit-initial-letter: 2)) {
+/* very old browsers: just a larger first letter, nothing floats */
+@supports not (height: 1lh) {
     body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty)))::first-letter {
         font-size: 1.7em;
         line-height: 1;
