@@ -1443,14 +1443,35 @@ function markCap(mes) {
 // overflow: hidden. The theme draws the avatar's frame on that same box, so whatever of
 // the frame sits outside it vanished. While an avatar is clipped like that, its frame is
 // drawn by a separate layer next to it, which nothing clips.
-const liftWatch = typeof ResizeObserver === 'function' ? new ResizeObserver((list) => list.forEach((e) => placeFrame(e.target))) : null;
+const liftWatch = typeof ResizeObserver === 'function'
+    ? new ResizeObserver((list) => list.forEach((e) => {
+        const av = e.target.classList.contains('avatar') ? e.target : e.target.querySelector(':scope > .avatar.sc-av-lifted');
+        if (av) placeFrame(av);
+    }))
+    : null;
+// Put the layer exactly over the avatar as it is seen on screen. Measured from the
+// screen rather than from offsetLeft, so it holds whatever the chat style does to
+// the avatar's box (moved, transformed, zoomed, a wrapper with display: contents).
 function placeFrame(av) {
     const layer = av.parentElement?.querySelector(':scope > .sc-av-frame');
     if (!layer) return;
-    layer.style.left = `${av.offsetLeft}px`;
-    layer.style.top = `${av.offsetTop}px`;
-    layer.style.width = `${av.offsetWidth}px`;
-    layer.style.height = `${av.offsetHeight}px`;
+    layer.style.transform = 'none';             // measure the plain box; style.css scales the reticle
+    layer.style.left = '0px';
+    layer.style.top = '0px';
+    layer.style.width = `${av.offsetWidth || 1}px`;
+    layer.style.height = `${av.offsetHeight || 1}px`;
+    const a = av.getBoundingClientRect();
+    const o = layer.getBoundingClientRect();
+    layer.style.removeProperty('transform');
+    if (!a.width || !o.width) return;
+    const k = o.width / (av.offsetWidth || 1);   // page zoom inside this message, if any
+    layer.style.left = `${(a.left - o.left) / k}px`;
+    layer.style.top = `${(a.top - o.top) / k}px`;
+    layer.style.width = `${a.width / k}px`;
+    layer.style.height = `${a.height / k}px`;
+}
+function placeAllFrames() {
+    document.querySelectorAll('#chat .mes .avatar.sc-av-lifted').forEach(placeFrame);
 }
 function syncLift(av) {
     const host = av.parentElement;
@@ -1463,15 +1484,23 @@ function syncLift(av) {
             layer.className = 'sc-av-frame';
             layer.setAttribute('aria-hidden', 'true');
             av.after(layer);
+            if (!av.dataset.scLiftEv) {           // a chat style may slide the avatar with a transition
+                av.dataset.scLiftEv = '1';
+                av.addEventListener('transitionend', () => placeFrame(av));
+                av.addEventListener('animationend', () => placeFrame(av));
+            }
             liftWatch?.observe(av);
+            liftWatch?.observe(host);
         }
         av.classList.add('sc-av-lifted');
         placeFrame(av);
+        setTimeout(() => placeFrame(av), 700);   // after a message's slide-in animation
     } else if (layer || av.classList.contains('sc-av-lifted')) {
         layer?.remove();
         av.classList.remove('sc-av-lifted');
         host.classList.remove('sc-av-host');
         liftWatch?.unobserve(av);
+        liftWatch?.unobserve(host);
     }
 }
 function onAvatarStyle(records) {
@@ -1517,6 +1546,7 @@ function init() {
         new MutationObserver(onChatText).observe(chatEl, { childList: true, subtree: true, characterData: true });
         new MutationObserver(onAvatarStyle).observe(chatEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
         chatEl.querySelectorAll('.mes .avatar').forEach(syncLift);
+        window.addEventListener('resize', placeAllFrames, { passive: true });
         chatEl.addEventListener('click', onClick);
         chatEl.addEventListener('input', onInput);
         chatEl.addEventListener('error', onImageError, true);
