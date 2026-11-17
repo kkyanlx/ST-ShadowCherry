@@ -596,6 +596,18 @@ const queryParts = (q) => q.toLowerCase().split(/\s+/).filter(Boolean);
 const chatQueryActive = () => view.chatQuery.trim().length >= 2;
 let searchSeq = 0;
 let searchTimer = null;
+let searchRequest = null;
+let pageRequest = null;
+
+function stopChatSearch() {
+    searchSeq++;
+    clearTimeout(searchTimer); searchTimer = null;
+    searchRequest?.abort(); searchRequest = null;
+}
+function stopPageWork() {
+    stopChatSearch();
+    pageRequest?.abort(); pageRequest = null;
+}
 
 // the message as a reader sees it: no tags, no markdown marks
 const plainText = (t) => String(t || '').replace(/<[^>]*>/g, ' ').replace(/[*_~`]+/g, '').replace(/\s+/g, ' ').trim();
@@ -687,15 +699,20 @@ function drawChats() {
 
 async function runChatSearch() {
     const avatar = view.avatar, query = view.chatQuery.trim();
-    const seq = ++searchSeq;
+    stopChatSearch();
+    const seq = searchSeq;
     if (query.length < 2) { view.found = null; drawChats(); return; }
+    if (!homeEl?.isConnected || view.mode !== 'page' || !characterBy(avatar)) return;
+    const controller = new AbortController();
+    searchRequest = controller;
     try {
         const res = await fetch('/api/chats/search', {
             method: 'POST', headers: ctx().getRequestHeaders(),
             body: JSON.stringify({ query, avatar_url: avatar }),
+            signal: controller.signal,
         });
         const data = await res.json();
-        if (seq !== searchSeq) return;
+        if (controller.signal.aborted || seq !== searchSeq) return;
         if (!res.ok || !Array.isArray(data)) throw new Error(data?.error || 'search failed');
         const time = (x) => toMoment(x.last_mes)?.valueOf() ?? 0;
         const files = data.filter((x) => x && x.file_name)
@@ -703,7 +720,7 @@ async function runChatSearch() {
             .sort((a, b) => time(b) - time(a));
         view.found = { query, files, lines: new Map(), shown: FOUND_STEP, error: false };
     } catch (e) {
-        if (seq !== searchSeq) return;
+        if (controller.signal.aborted || seq !== searchSeq) return;
         console.error('[Shadow Cherry] chat search failed', e);
         view.found = { query, files: [], lines: new Map(), shown: 0, error: true };
     }
@@ -714,25 +731,35 @@ async function runChatSearch() {
 // read the chats on screen whose lines are not known yet, two at a time
 async function loadLines(seq) {
     const f = view.found, c = characterBy(view.avatar);
-    if (!f || !c) return;
+    const controller = searchRequest;
+    const live = () => seq === searchSeq && !controller?.signal.aborted
+        && !!controller && homeEl?.isConnected && view.mode === 'page' && view.avatar === c?.avatar && view.found === f;
+    if (!f || !c || f.loading || !live()) return;
     const parts = queryParts(f.query);
-    const want = f.files.slice(0, f.shown).filter((x) => !f.lines.has(x.file_name));
-    for (let i = 0; i < want.length; i += 2) {
-        await Promise.all(want.slice(i, i + 2).map(async (chat) => {
-            let lines = [];
-            try {
-                const res = await fetch('/api/chats/get', {
-                    method: 'POST', headers: ctx().getRequestHeaders(),
-                    body: JSON.stringify({ ch_name: c.name, file_name: stripExt(chat.file_name), avatar_url: c.avatar }),
-                });
-                const data = await res.json();
-                lines = Array.isArray(data) ? findLines(data, parts) : [];
-            } catch (e) { console.warn('[Shadow Cherry] could not read a chat', e); }
-            if (seq === searchSeq) f.lines.set(chat.file_name, lines);
-        }));
-        if (seq !== searchSeq) return;
-        drawChats();
-    }
+    f.loading = true;
+    try {
+        while (live()) {
+            // Re-read shown after each batch: repeated "more" clicks share one loader.
+            const want = f.files.slice(0, f.shown).filter((x) => !f.lines.has(x.file_name)).slice(0, 2);
+            if (!want.length) break;
+            await Promise.all(want.map(async (chat) => {
+                let lines = [];
+                try {
+                    const res = await fetch('/api/chats/get', {
+                        method: 'POST', headers: ctx().getRequestHeaders(),
+                        body: JSON.stringify({ ch_name: c.name, file_name: stripExt(chat.file_name), avatar_url: c.avatar }),
+                        signal: controller.signal,
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !Array.isArray(data)) throw new Error('could not read chat');
+                    lines = Array.isArray(data) ? findLines(data, parts) : [];
+                } catch (e) { if (!controller.signal.aborted) console.warn('[Shadow Cherry] could not read a chat', e); }
+                if (live()) f.lines.set(chat.file_name, lines);
+            }));
+            if (!live()) return;
+            drawChats();
+        }
+    } finally { f.loading = false; }
 }
 
 // open the chat and scroll to the message
@@ -801,6 +828,7 @@ function render() {
     stopHomeWork({ abort: view.mode === 'page' });
     cleanupTagScroller();
     if (view.mode === 'page' && !characterBy(view.avatar)) view.mode = 'shelf';
+    if (view.mode !== 'page') stopPageWork();
     homeEl.dataset.mode = view.mode;
     homeEl.innerHTML = (view.mode === 'page' ? pageHtml() : view.mode === 'all' ? allHtml() : shelfHtml()) + FOOT;
     scheduleHomeWork();
@@ -910,11 +938,28 @@ async function reloadChats(avatar) {
 }
 
 async function loadChats(avatar) {
+    stopPageWork();
+    const controller = new AbortController();
+    pageRequest = controller;
     view.chats = null;
-    view.chatQuery = ''; view.found = null; searchSeq++;
+    view.chatQuery = ''; view.found = null;
     render();
-    if (!await reloadChats(avatar) && view.avatar === avatar) view.chats = [];
-    render();
+    const live = () => pageRequest === controller && !controller.signal.aborted
+        && homeEl?.isConnected && view.mode === 'page' && view.avatar === avatar;
+    try {
+        const list = await fetchChats(avatar, { signal: controller.signal });
+        if (!live()) return;
+        chatCounts.set(avatar, list.length);
+        view.chats = list;
+    } catch (e) {
+        if (!live()) return;
+        console.error('[Shadow Cherry] could not load chats', e);
+        view.chats = [];
+        toast('error', T.failed);
+    } finally {
+        if (live()) render();
+        if (pageRequest === controller) pageRequest = null;
+    }
 }
 
 function isWelcomeShowing(chatEl) {
@@ -927,6 +972,7 @@ function mount() {
     const s = getSettings();
     const want = s.home && isWelcomeShowing(chatEl);
     if (!want) {
+        stopPageWork();
         stopHomeWork({ abort: true });
         cleanupTagScroller();
         if (homeEl?.isConnected) homeEl.remove();
@@ -1159,12 +1205,11 @@ function onInput(e) {
         view.query = e.target.value;
         renderBody();
     } else if (e.target?.id === 'sc-cq') {
-        const wasActive = chatQueryActive();
+        stopChatSearch();
         view.chatQuery = e.target.value;
         view.openMenu = null;
         // the list comes back at once when the box is cleared; a search waits for a pause in typing
-        if (wasActive !== chatQueryActive() || !chatQueryActive()) { view.found = null; searchSeq++; drawChats(); }
-        clearTimeout(searchTimer);
+        view.found = null; drawChats();
         if (chatQueryActive()) searchTimer = setTimeout(runChatSearch, 400);
     }
 }
@@ -1214,6 +1259,7 @@ const TAROT_BACK = `<svg viewBox="0 0 100 160" aria-hidden="true">
     <path d="M15 15L21 15M15 15L15 21M85 15L79 15M85 15L85 21M15 145L21 145M15 145L15 139M85 145L79 145M85 145L85 139" stroke-width=".7"/>
 </svg>`;
 let tarotEl = null, tarotLast = null, tarotPick = null, tarotFocus = null;
+let tarotDealTimer = null;
 let cleanupTarotViewport = () => {};
 
 // A phone's visible area can shrink or move independently of the layout
@@ -1300,17 +1346,27 @@ function openTarot() {
     document.body.appendChild(tarotEl);
     cleanupTarotViewport = watchTarotViewport(tarotEl);
     dealTarot();
-    requestAnimationFrame(() => tarotEl?.classList.add('sc-t-in'));
-    setTimeout(() => { flipTarot(true); tarotEl?.querySelector('[data-t="open"]')?.focus({ preventScroll: true }); }, 650);
+    const el = tarotEl;
+    requestAnimationFrame(() => { if (tarotEl === el) el.classList.add('sc-t-in'); });
+    tarotDealTimer = setTimeout(() => {
+        tarotDealTimer = null;
+        if (tarotEl !== el) return;
+        flipTarot(true); el.querySelector('[data-t="open"]')?.focus({ preventScroll: true });
+    }, 650);
 
     tarotEl.addEventListener('click', (e) => {
+        if (tarotEl !== el) return; // the fading-out dialog no longer owns actions
         const b = e.target.closest('[data-t]');
         if (!b) { if (e.target === tarotEl) closeTarot(); return; }
         if (b.dataset.t === 'close') closeTarot();
         else if (b.dataset.t === 'again') {
             if (!tarotEl.classList.contains('sc-t-up')) return;
             flipTarot(false);
-            setTimeout(() => { dealTarot(); flipTarot(true); }, 520);
+            tarotDealTimer = setTimeout(() => {
+                tarotDealTimer = null;
+                if (tarotEl !== el) return;
+                dealTarot(); flipTarot(true);
+            }, 520);
         } else if (b.dataset.t === 'open') {
             const c = characterBy(tarotPick);
             closeTarot();
@@ -1320,6 +1376,7 @@ function openTarot() {
         }
     });
     tarotEl.addEventListener('keydown', (e) => {
+        if (tarotEl !== el) return;
         if (e.key === 'Escape') { e.preventDefault(); closeTarot(); }
         if (e.key === 'Tab') {      // keep the keyboard inside the dialog
             const items = [...tarotEl.querySelectorAll('button')];
@@ -1333,6 +1390,7 @@ function openTarot() {
 function closeTarot() {
     const el = tarotEl;
     if (!el) return;
+    clearTimeout(tarotDealTimer); tarotDealTimer = null;
     cleanupTarotViewport();
     cleanupTarotViewport = () => {};
     tarotEl = null;
@@ -1463,7 +1521,10 @@ function closeButton() {
         btn.innerHTML = `<div class="drawer-header"><div class="drawer-icon closedIcon interactable" role="button" tabindex="0" title="${T.close}" aria-label="${T.close}"></div></div>`;
         holder.prepend(btn);
         const icon = btn.querySelector('.drawer-icon');
+        let closing = false;
         const run = async () => {
+            if (closing) return;
+            closing = true;
             try {
                 captureCurrentSnip();
                 const m = await st();
@@ -1472,7 +1533,7 @@ function closeButton() {
             } catch (e) {
                 console.error('[Shadow Cherry] close chat failed', e);
                 toast('error', T.failed);
-            }
+            } finally { closing = false; }
         };
         icon.addEventListener('click', run);
         icon.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); run(); } });
