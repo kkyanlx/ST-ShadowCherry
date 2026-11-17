@@ -1438,6 +1438,52 @@ function markCap(mes) {
     if (alt && mes.dataset.scCap !== 'alt') mes.dataset.scCap = 'alt';
     else if (!alt && mes.dataset.scCap) delete mes.dataset.scCap;
 }
+/* ── avatars zoomed by another extension ─────────────────── */
+// AvatarAdjuster and the like zoom the picture and clip the avatar box with an inline
+// overflow: hidden. The theme draws the avatar's frame on that same box, so whatever of
+// the frame sits outside it vanished. While an avatar is clipped like that, its frame is
+// drawn by a separate layer next to it, which nothing clips.
+const liftWatch = typeof ResizeObserver === 'function' ? new ResizeObserver((list) => list.forEach((e) => placeFrame(e.target))) : null;
+function placeFrame(av) {
+    const layer = av.parentElement?.querySelector(':scope > .sc-av-frame');
+    if (!layer) return;
+    layer.style.left = `${av.offsetLeft}px`;
+    layer.style.top = `${av.offsetTop}px`;
+    layer.style.width = `${av.offsetWidth}px`;
+    layer.style.height = `${av.offsetHeight}px`;
+}
+function syncLift(av) {
+    const host = av.parentElement;
+    if (!host) return;
+    let layer = host.querySelector(':scope > .sc-av-frame');
+    if (av.style.getPropertyValue('overflow') === 'hidden') {
+        if (!layer) {
+            if (getComputedStyle(host).position === 'static') host.classList.add('sc-av-host');
+            layer = document.createElement('i');
+            layer.className = 'sc-av-frame';
+            layer.setAttribute('aria-hidden', 'true');
+            av.after(layer);
+            liftWatch?.observe(av);
+        }
+        av.classList.add('sc-av-lifted');
+        placeFrame(av);
+    } else if (layer || av.classList.contains('sc-av-lifted')) {
+        layer?.remove();
+        av.classList.remove('sc-av-lifted');
+        host.classList.remove('sc-av-host');
+        liftWatch?.unobserve(av);
+    }
+}
+function onAvatarStyle(records) {
+    for (const r of records) {
+        if (r.type === 'attributes') {
+            if (r.target.classList?.contains('avatar')) syncLift(r.target);
+        } else {
+            for (const n of r.addedNodes) if (n.nodeType === 1) n.querySelectorAll?.('.mes .avatar, .avatar').forEach(syncLift);
+        }
+    }
+}
+
 function markAllCaps() {
     document.querySelectorAll('#chat .mes').forEach(markCap);
 }
@@ -1469,6 +1515,8 @@ function init() {
     if (chatEl) {
         new MutationObserver((records) => { mount(); onChatGrow(records); }).observe(chatEl, { childList: true });
         new MutationObserver(onChatText).observe(chatEl, { childList: true, subtree: true, characterData: true });
+        new MutationObserver(onAvatarStyle).observe(chatEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
+        chatEl.querySelectorAll('.mes .avatar').forEach(syncLift);
         chatEl.addEventListener('click', onClick);
         chatEl.addEventListener('input', onInput);
         chatEl.addEventListener('error', onImageError, true);
