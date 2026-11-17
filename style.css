@@ -586,7 +586,9 @@ body[data-generating][data-sc-wait] #mes_stop::after {
    index.js marks them and adds a layer next to the avatar; the theme's frame is drawn
    there instead of on the clipped box. Ripple also clips the picture to its window here.
    #chat#chat: Moonlit nests the preset's CSS, which lifts its weight; these must win. */
-#chat#chat .mes .sc-av-host { position: relative; }
+/* A static wrapper needs a containing block. Let Moonlit take precedence when
+   the user switches to a style with a sticky or otherwise positioned wrapper. */
+:where(#chat .mes .sc-av-host) { position: relative; }
 #chat#chat .mes .avatar.sc-av-lifted::after { display: none !important; }
 #chat#chat .mes .avatar.sc-av-lifted {
     overflow: hidden !important;
@@ -615,6 +617,47 @@ body.ripplestyle #chat#chat .mes .mesAvatarWrapper .avatar.sc-av-lifted img {
     position: static !important;
     -webkit-mask: none !important;
     mask: none !important;
+}
+
+/* AvatarAdjuster owns this direct child and uses it as the desktop panel anchor.
+   Scope each anchor to its message so two visible portraits never share a gear. */
+#chat .mes > .aa-edit-btn {
+    z-index: 8 !important;
+}
+#chat .mes > .aa-edit-btn::before {
+    inset: 0;
+}
+@media (hover: hover) and (pointer: fine) {
+    #chat .mes > .mesAvatarWrapper:has(> .avatar:hover) ~ .aa-edit-btn { opacity: 0.85; }
+}
+@media (pointer: coarse) {
+    #chat .mes > .aa-edit-btn {
+        width: 28px !important;
+        height: 28px !important;
+    }
+}
+body.hideChatAvatars #chat .mes > .aa-edit-btn,
+#chat .mes.smallSysMes > .aa-edit-btn,
+#chat .mes:not(:has(> .mesAvatarWrapper > .avatar)) > .aa-edit-btn {
+    display: none !important;
+}
+@supports (anchor-scope: --sc-portrait) and (left: anchor(--sc-portrait left)) {
+    #chat .mes:has(> .aa-edit-btn) {
+        anchor-scope: --sc-portrait;
+    }
+    #chat .mes:has(> .aa-edit-btn) > .mesAvatarWrapper > .avatar {
+        anchor-name: --sc-portrait;
+    }
+    #chat .mes > .aa-edit-btn {
+        position-anchor: --sc-portrait;
+        left: calc(anchor(left, -10000px) + 1px) !important;
+        top: calc(anchor(top, -10000px) + 1px) !important;
+        position-visibility: anchors-visible;
+    }
+}
+#chat .mes > .aa-edit-btn.sc-gear-measured {
+    left: calc(var(--sc-gear-x, -10000px) + 1px) !important;
+    top: calc(var(--sc-gear-y, -10000px) + 1px) !important;
 }
 
 /* ── drop cap ──

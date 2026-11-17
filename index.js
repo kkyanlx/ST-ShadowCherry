@@ -1765,6 +1765,95 @@ function pictureClip(av) {
     const round = av.style.getPropertyValue('--sc-av-r') || '0px';
     return `inset(${t}px ${r}px ${b}px ${l}px round ${round})`;
 }
+// Older engines without scoped CSS anchors use viewport geometry. Only messages
+// near the visible part of the chat take part in a scroll or resize pass.
+let editGearFallback;
+function initEditGearFallback(chat) {
+    if (window.CSS?.supports('(anchor-scope: --sc-portrait) and (left: anchor(--sc-portrait left))')) return;
+    const entries = new Map();
+    const visible = new Set();
+    let pending = 0;
+
+    function place() {
+        pending = 0;
+        const positions = [];
+        for (const mes of visible) {
+            const { avatar, button } = entries.get(mes);
+            const parent = button.offsetParent;
+            if (!parent) continue;
+            const box = avatar.getBoundingClientRect();
+            const origin = parent.getBoundingClientRect();
+            const sx = origin.width / parent.offsetWidth;
+            const sy = origin.height / parent.offsetHeight;
+            const shown = box.width && box.height && sx > 0 && sy > 0 &&
+                getComputedStyle(avatar).visibility === 'visible';
+            positions.push([button,
+                shown ? (box.left - origin.left) / sx - parent.clientLeft + parent.scrollLeft : -10000,
+                shown ? (box.top - origin.top) / sy - parent.clientTop + parent.scrollTop : -10000]);
+        }
+        for (const [button, x, y] of positions) {
+            frameStyle(button, '--sc-gear-x', x + 'px');
+            frameStyle(button, '--sc-gear-y', y + 'px');
+        }
+    }
+    function schedule() {
+        if (visible.size && !pending) pending = requestAnimationFrame(place);
+    }
+    const sizes = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
+    const viewport = typeof IntersectionObserver === 'function' ? new IntersectionObserver((batch) => {
+        for (const { target, isIntersecting } of batch) {
+            if (isIntersecting && entries.has(target)) visible.add(target);
+            else visible.delete(target);
+        }
+        schedule();
+    }, { root: chat, rootMargin: '64px' }) : null;
+
+    function sync(mes, button, avatar) {
+        const old = entries.get(mes);
+        if (old && old.button === button && old.avatar === avatar) return;
+        if (old) {
+            viewport?.unobserve(mes);
+            sizes?.unobserve(mes);
+            sizes?.unobserve(old.avatar);
+            old.button.classList.remove('sc-gear-measured');
+            old.button.style.removeProperty('--sc-gear-x');
+            old.button.style.removeProperty('--sc-gear-y');
+            entries.delete(mes);
+            visible.delete(mes);
+        }
+        if (!avatar) return;
+        entries.set(mes, { button, avatar });
+        button.classList.add('sc-gear-measured');
+        sizes?.observe(mes);
+        sizes?.observe(avatar);
+        if (viewport) viewport.observe(mes);
+        else visible.add(mes);
+        schedule();
+    }
+    chat.addEventListener('scroll', schedule, { passive: true });
+    chat.addEventListener('transitionend', schedule);
+    chat.addEventListener('animationend', schedule);
+    window.addEventListener('resize', schedule, { passive: true });
+    editGearFallback = { sync, schedule };
+}
+// AvatarAdjuster 2.4 captures the avatar node in its pointerup handler. If a
+// renderer replaces only that node, let AA's own insertion pass build a fresh
+// button. Keeping the original direct child everywhere else preserves its API.
+const gearPortraits = new WeakMap();
+function syncMessageGear(mes) {
+    const button = mes.isConnected && mes.querySelector(':scope > .aa-edit-btn');
+    const avatar = button && mes.querySelector(':scope > .mesAvatarWrapper > .avatar');
+    if (avatar) {
+        const previous = gearPortraits.get(button);
+        if (previous && previous !== avatar) {
+            button.remove();
+            editGearFallback?.sync(mes, null, null);
+            return;
+        }
+        gearPortraits.set(button, avatar);
+    }
+    editGearFallback?.sync(mes, button, avatar);
+}
 function placeAllFrames() {
     document.querySelectorAll('#chat .mes .avatar.sc-av-lifted').forEach((av) => queueLift(av));
 }
@@ -1809,7 +1898,7 @@ function syncLift(av) {
             av.style.setProperty('--sc-av-r', !zero(pic) ? pic : !zero(own) ? own : '0px');
         }
         if (!layer) {
-            if (getComputedStyle(host).position === 'static') host.classList.add('sc-av-host');
+            host.classList.add('sc-av-host');
             layer = document.createElement('i');
             layer.className = 'sc-av-frame';
             layer.setAttribute('aria-hidden', 'true');
@@ -1837,13 +1926,25 @@ function avatarsWithin(node) {
     return node.matches('.avatar') ? [node] : node.querySelectorAll('.avatar');
 }
 function onAvatarStyle(records) {
+    const gearMessages = new Set();
     for (const r of records) {
         if (r.type === 'attributes') {
             const t = r.target;
             if (t.classList?.contains('avatar')) queueLift(t, true);
             else if (t.tagName === 'IMG' && t.parentElement?.classList.contains('avatar')) queueLift(t.parentElement, true);
+            if (editGearFallback && (t.classList.contains('avatar') || t.classList.contains('mesAvatarWrapper'))) editGearFallback.schedule();
         } else {
+            if (r.target.classList.contains('mes') &&
+                [...r.addedNodes, ...r.removedNodes].some((n) => n.nodeType === 1 &&
+                    (n.classList.contains('aa-edit-btn') || n.classList.contains('mesAvatarWrapper')))) {
+                gearMessages.add(r.target);
+            }
+            if (r.target.classList.contains('mesAvatarWrapper') &&
+                [...r.addedNodes, ...r.removedNodes].some((n) => n.nodeType === 1 && n.classList.contains('avatar'))) {
+                gearMessages.add(r.target.closest('.mes'));
+            }
             for (const n of r.removedNodes) for (const av of avatarsWithin(n)) {
+                if (editGearFallback) gearMessages.add(av.closest('.mes'));
                 if (!av.isConnected && liftInputs.has(av)) releaseLift(av);
             }
             // Another renderer may remove just the frame while retaining the avatar.
@@ -1851,11 +1952,15 @@ function onAvatarStyle(records) {
                 const av = r.target.querySelector?.(':scope > .avatar.sc-av-lifted');
                 if (av?.isConnected) queueLift(av, true);
             }
-            for (const n of r.addedNodes) for (const av of avatarsWithin(n)) queueLift(av, true);
+            for (const n of r.addedNodes) for (const av of avatarsWithin(n)) {
+                queueLift(av, true);
+                if (av.parentElement?.classList.contains('mesAvatarWrapper')) gearMessages.add(av.closest('.mes'));
+            }
             // An image can be replaced without replacing its avatar container.
             if (r.target.classList?.contains('avatar')) queueLift(r.target, true);
         }
     }
+    for (const mes of gearMessages) if (mes) syncMessageGear(mes);
 }
 function onAvatarLoad(e) {
     const av = e.target.tagName === 'IMG' ? e.target.parentElement : null;
@@ -1895,10 +2000,23 @@ function init() {
 
     const chatEl = document.getElementById('chat');
     if (chatEl) {
+        initEditGearFallback(chatEl);
+        chatEl.querySelectorAll('.mes > .aa-edit-btn').forEach((button) => syncMessageGear(button.parentElement));
         new MutationObserver((records) => { updateCloseButton(); mount(); onChatGrow(records); }).observe(chatEl, { childList: true });
         new MutationObserver(onChatText).observe(chatEl, { childList: true, subtree: true, characterData: true });
         new MutationObserver(onAvatarStyle).observe(chatEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
         chatEl.querySelectorAll('.mes .avatar').forEach((av) => queueLift(av, true));
+        // A style can mirror a message without resizing its avatar or wrapper.
+        const layoutClasses = /^(?:flatchat|bubblechat|documentstyle|echostyle|whisperstyle|hushstyle|ripplestyle|tidestyle|big-avatars|hideChatAvatars)$/;
+        const layoutKey = () => Array.from(document.body.classList).filter((name) => layoutClasses.test(name)).sort().join(' ');
+        let layout = layoutKey();
+        new MutationObserver(() => {
+            const next = layoutKey();
+            if (next === layout) return;
+            layout = next;
+            placeAllFrames();
+            editGearFallback?.schedule();
+        }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
         window.addEventListener('resize', placeAllFrames, { passive: true });
         chatEl.addEventListener('click', onClick);
         chatEl.addEventListener('input', onInput);
