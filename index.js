@@ -1439,10 +1439,11 @@ function markCap(mes) {
     else if (!alt && mes.dataset.scCap) delete mes.dataset.scCap;
 }
 /* ── avatars zoomed by another extension ─────────────────── */
-// AvatarAdjuster and the like zoom the picture and clip the avatar box with an inline
-// overflow: hidden. The theme draws the avatar's frame on that same box, so whatever of
-// the frame sits outside it vanished. While an avatar is clipped like that, its frame is
-// drawn by a separate layer next to it, which nothing clips.
+// AvatarAdjuster and the like resize the picture to the avatar box, zoom and move it,
+// and clip the box with an inline overflow: hidden. The theme draws the avatar's frame
+// on that same box, so whatever of the frame sits outside it vanished, and the picture's
+// own rounding travelled with the zoom. While an avatar is handled like that, its frame
+// is drawn by a separate layer next to it, and the box itself does the clipping.
 const liftWatch = typeof ResizeObserver === 'function'
     ? new ResizeObserver((list) => list.forEach((e) => {
         const av = e.target.classList.contains('avatar') ? e.target : e.target.querySelector(':scope > .avatar.sc-av-lifted');
@@ -1455,6 +1456,7 @@ const liftWatch = typeof ResizeObserver === 'function'
 function placeFrame(av) {
     const layer = av.parentElement?.querySelector(':scope > .sc-av-frame');
     if (!layer) return;
+    clipToPicture(av);
     layer.style.transform = 'none';             // measure the plain box; style.css scales the reticle
     layer.style.left = '0px';
     layer.style.top = '0px';
@@ -1470,6 +1472,21 @@ function placeFrame(av) {
     layer.style.width = `${a.width / k}px`;
     layer.style.height = `${a.height / k}px`;
 }
+// The window the picture is seen through: the picture's own place and rounding in the
+// box, measured before any zoom (offsets ignore transforms). The picture can be smaller
+// than the box, so clipping the whole box would leave square corners showing.
+function clipToPicture(av) {
+    const img = av.querySelector(':scope > img');
+    if (!img || !img.offsetWidth) return;
+    const inBox = img.offsetParent === av;
+    const l = (inBox ? img.offsetLeft : img.offsetLeft - av.offsetLeft) + av.clientLeft;
+    const t = (inBox ? img.offsetTop : img.offsetTop - av.offsetTop) + av.clientTop;
+    const r = Math.max(0, av.offsetWidth - l - img.offsetWidth);
+    const b = Math.max(0, av.offsetHeight - t - img.offsetHeight);
+    const round = av.style.getPropertyValue('--sc-av-r') || '0px';
+    const value = `inset(${t}px ${r}px ${b}px ${l}px round ${round})`;
+    if (av.style.getPropertyValue('--sc-av-clip') !== value) av.style.setProperty('--sc-av-clip', value);
+}
 function placeAllFrames() {
     document.querySelectorAll('#chat .mes .avatar.sc-av-lifted').forEach(placeFrame);
 }
@@ -1477,7 +1494,18 @@ function syncLift(av) {
     const host = av.parentElement;
     if (!host) return;
     let layer = host.querySelector(':scope > .sc-av-frame');
-    if (av.style.getPropertyValue('overflow') === 'hidden') {
+    const img = av.querySelector(':scope > img');
+    // zoomed (the box is clipped) or just reframed (the picture is resized to the box)
+    if (av.style.getPropertyValue('overflow') === 'hidden' || !!img?.style.getPropertyValue('width')) {
+        // the picture's own rounding would be zoomed and moved with it and leave a bare
+        // corner in the window; the box takes that rounding over (style.css)
+        if (img && !av.dataset.scAvR) {
+            av.dataset.scAvR = '1';
+            const own = getComputedStyle(av).borderRadius;
+            const pic = getComputedStyle(img).borderRadius;
+            const zero = (v) => !v || /^0(px|%)?( 0(px|%)?)*$/.test(v);
+            av.style.setProperty('--sc-av-r', !zero(pic) ? pic : !zero(own) ? own : '0px');
+        }
         if (!layer) {
             if (getComputedStyle(host).position === 'static') host.classList.add('sc-av-host');
             layer = document.createElement('i');
@@ -1498,6 +1526,9 @@ function syncLift(av) {
     } else if (layer || av.classList.contains('sc-av-lifted')) {
         layer?.remove();
         av.classList.remove('sc-av-lifted');
+        av.style.removeProperty('--sc-av-r');
+        av.style.removeProperty('--sc-av-clip');
+        delete av.dataset.scAvR;
         host.classList.remove('sc-av-host');
         liftWatch?.unobserve(av);
         liftWatch?.unobserve(host);
@@ -1506,7 +1537,9 @@ function syncLift(av) {
 function onAvatarStyle(records) {
     for (const r of records) {
         if (r.type === 'attributes') {
-            if (r.target.classList?.contains('avatar')) syncLift(r.target);
+            const t = r.target;
+            if (t.classList?.contains('avatar')) syncLift(t);
+            else if (t.tagName === 'IMG' && t.parentElement?.classList.contains('avatar')) syncLift(t.parentElement);
         } else {
             for (const n of r.addedNodes) if (n.nodeType === 1) n.querySelectorAll?.('.mes .avatar, .avatar').forEach(syncLift);
         }

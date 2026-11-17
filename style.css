@@ -582,24 +582,34 @@ body[data-generating][data-sc-wait] #mes_stop::after {
 
 /* ── avatars another extension zooms and clips (AvatarAdjuster…) ──
    index.js marks them and adds a layer next to the avatar; the theme's frame is drawn
-   there instead of on the clipped box. Ripple also clips the picture to its window here. */
-#chat .mes .sc-av-host { position: relative; }
-#chat .mes .avatar.sc-av-lifted::after { display: none !important; }
-#chat .mes .sc-av-frame {
+   there instead of on the clipped box. Ripple also clips the picture to its window here.
+   #chat#chat: Moonlit nests the preset's CSS, which lifts its weight; these must win. */
+#chat#chat .mes .sc-av-host { position: relative; }
+#chat#chat .mes .avatar.sc-av-lifted::after { display: none !important; }
+#chat#chat .mes .avatar.sc-av-lifted {
+    overflow: hidden !important;
+    /* the picture's own place and shape in the box, measured by index.js */
+    -webkit-clip-path: var(--sc-av-clip, none);
+    clip-path: var(--sc-av-clip, none);
+}
+#chat#chat .mes .avatar.sc-av-lifted > img { border-radius: 0 !important; }
+#chat#chat .mes .sc-av-frame {
     position: absolute;
     z-index: 5;
     pointer-events: none;
     background: center / 100% 100% no-repeat;
 }
-body:not(.ripplestyle) #chat .mes .sc-av-frame { background-image: var(--sc-reticle, none); transform: scale(1.24); }
-body.ripplestyle #chat .mes .sc-av-frame { background-image: var(--sc-frame, none); }
-body.ripplestyle #chat .mes .mesAvatarWrapper .avatar.sc-av-lifted {
+body:not(.ripplestyle) #chat#chat .mes .sc-av-frame { background-image: var(--sc-reticle, none); transform: scale(1.24); }
+body.ripplestyle #chat#chat .mes .sc-av-frame { background-image: var(--sc-frame, none); }
+body.ripplestyle #chat#chat .mes .mesAvatarWrapper .avatar.sc-av-lifted {
+    -webkit-clip-path: none;
+    clip-path: none;
     box-sizing: border-box;
     padding: 10.53% !important;
     -webkit-mask: var(--sc-shape) center / 78.95% 78.95% no-repeat;
     mask: var(--sc-shape) center / 78.95% 78.95% no-repeat;
 }
-body.ripplestyle #chat .mes .mesAvatarWrapper .avatar.sc-av-lifted img {
+body.ripplestyle #chat#chat .mes .mesAvatarWrapper .avatar.sc-av-lifted img {
     position: static !important;
     -webkit-mask: none !important;
     mask: none !important;
