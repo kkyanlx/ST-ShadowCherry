@@ -47,6 +47,7 @@ const RU = (() => {
     } catch { return false; }
 })();
 const T = RU ? {
+    retry: 'Повторить', listError: 'Не удалось загрузить список чатов.', readError: 'Не удалось прочитать чат.',
     continue: 'продолжить', search: 'поиск персонажей…', archive: 'архив', back: '‹ назад',
     recent: 'недавние', frequent: 'частые', name: 'а–я', seeAll: 'все →', found: 'нашлось',
     chatFrom: (d) => `чат от ${d}`,
@@ -83,6 +84,7 @@ const T = RU ? {
         ['Суд', 'пробуждение, второй шанс'], ['Мир', 'круг замкнулся'],
     ],
 } : {
+    retry: 'Retry', listError: 'Could not load the chat list.', readError: 'Could not read this chat.',
     continue: 'continue', search: 'search characters…', archive: 'archive', back: '‹ back',
     recent: 'recent', frequent: 'frequent', name: 'a–z', seeAll: 'all →', found: 'found',
     chatFrom: (d) => `chat from ${d}`,
@@ -541,7 +543,11 @@ function chatRow(c, chat, i, isLast) {
     </div>`;
 }
 
+function retryHtml(message, action) {
+    return emptyHtml(message) + `<button type="button" class="sc-btn" data-act="${action}">${T.retry}</button>`;
+}
 function chatListHtml(c) {
+    if (view.listError) return retryHtml(T.listError, 'retry-list');
     const s = getSettings();
     if (!view.chats) return emptyHtml(T.loading);
     if (!view.chats.length) return emptyHtml(T.noChats);
@@ -576,7 +582,7 @@ function pageHtml() {
     return `
         <button type="button" class="sc-back" data-act="back">${T.back}</button>
         <div class="sc-dh">${cameo(c, 'sc-cameo-sm')}<span class="sc-nm">${esc(c.name)}</span>
-            <button type="button" class="sc-btn sc-fill" data-act="new-chat">${T.newChat}</button></div>
+            <button type="button" class="sc-btn sc-fill" data-act="new-chat"${Array.isArray(view.chats) ? '' : ' disabled'}>${T.newChat}</button></div>
         ${pageTagsHtml(c)}
         <div class="sc-dh-tools">
             <button type="button" class="sc-btn ${pinned ? 'sc-on' : ''}" data-act="pin">${pinned ? T.unpin : T.pin}</button>
@@ -658,7 +664,7 @@ function findLines(data, parts) {
 function foundHtml(c) {
     const f = view.found;
     if (!f || f.query !== view.chatQuery.trim()) return emptyHtml(T.searching);
-    if (f.error) return emptyHtml(T.failed);
+    if (f.error) return retryHtml(T.failed, 'retry-search');
     if (!f.files.length) return emptyHtml(T.noHits);
     const parts = queryParts(f.query);
     const groups = f.files.slice(0, f.shown).map((chat) => {
@@ -667,7 +673,8 @@ function foundHtml(c) {
         const meta = [m ? dayLabel(m) : '', chat.message_count ? `${chat.message_count} ${T.mes}` : ''].filter(Boolean).join(' · ');
         const lines = f.lines.get(chat.file_name);
         let body;
-        if (!lines) body = `<span class="sc-meta sc-hit-wait">${T.searching}</span>`;
+        if (lines === null) body = retryHtml(T.readError, 'retry-lines');
+        else if (!lines) body = `<span class="sc-meta sc-hit-wait">${T.searching}</span>`;
         else if (!lines.length) body = `<span class="sc-meta sc-hit-wait">${T.inTitle}</span>`;
         else {
             body = lines.slice(0, HITS_SHOWN).map((line) => {
@@ -743,7 +750,7 @@ async function loadLines(seq) {
             const want = f.files.slice(0, f.shown).filter((x) => !f.lines.has(x.file_name)).slice(0, 2);
             if (!want.length) break;
             await Promise.all(want.map(async (chat) => {
-                let lines = [];
+                let lines = null;
                 try {
                     const res = await fetch('/api/chats/get', {
                         method: 'POST', headers: ctx().getRequestHeaders(),
@@ -752,7 +759,7 @@ async function loadLines(seq) {
                     });
                     const data = await res.json();
                     if (!res.ok || !Array.isArray(data)) throw new Error('could not read chat');
-                    lines = Array.isArray(data) ? findLines(data, parts) : [];
+                    lines = findLines(data, parts);
                 } catch (e) { if (!controller.signal.aborted) console.warn('[Shadow Cherry] could not read a chat', e); }
                 if (live()) f.lines.set(chat.file_name, lines);
             }));
@@ -941,7 +948,7 @@ async function loadChats(avatar) {
     stopPageWork();
     const controller = new AbortController();
     pageRequest = controller;
-    view.chats = null;
+    view.chats = null; view.listError = false;
     view.chatQuery = ''; view.found = null;
     render();
     const live = () => pageRequest === controller && !controller.signal.aborted
@@ -954,8 +961,7 @@ async function loadChats(avatar) {
     } catch (e) {
         if (!live()) return;
         console.error('[Shadow Cherry] could not load chats', e);
-        view.chats = [];
-        toast('error', T.failed);
+        view.listError = true;
     } finally {
         if (live()) render();
         if (pageRequest === controller) pageRequest = null;
@@ -1090,7 +1096,8 @@ async function deleteChat(avatar, file) {
         await m.deleteCharacterChatByName(String(id), stripExt(file));
         // it only logs when the server refuses, so check that the file is really gone
         const list = await reloadChats(avatar);
-        if (list?.some((x) => x.file_name === file)) throw new Error('the chat is still there');
+        if (!list) throw new Error('could not confirm deletion');
+        if (list.some((x) => x.file_name === file)) throw new Error('the chat is still there');
         dropFav(avatar, file);
         invalidateSnip(avatar);
         if (list) toast('success', T.deleted);
@@ -1164,6 +1171,15 @@ function onClick(e) {
         case 'clear-tags': view.tags = []; syncTagRow(); renderBody(); break;
         case 'all': view.mode = 'all'; render(); document.getElementById('chat').scrollTop = 0; break;
         case 'back': view.mode = view.mode === 'page' ? view.prev : 'shelf'; view.prev = 'shelf'; view.avatar = null; view.openMenu = null; view.chats = null; view.chatQuery = ''; view.found = null; searchSeq++; render(); document.getElementById('chat').scrollTop = 0; break;
+        case 'retry-list': loadChats(avatar); break;
+        case 'retry-search': runChatSearch(); break;
+        case 'retry-lines':
+            if (view.found?.lines.get(file) === null) {
+                view.found.lines.delete(file);
+                drawChats();
+                loadLines(searchSeq);
+            }
+            break;
         case 'new-chat': newChat(avatar); break;
         case 'pin': toggleIn(s.pinned, avatar); save(); render(); break;
         case 'archive': toggleIn(s.archived, avatar); save(); render(); break;
