@@ -1447,35 +1447,93 @@ function markCap(mes) {
 const liftWatch = typeof ResizeObserver === 'function'
     ? new ResizeObserver((list) => list.forEach((e) => {
         const av = e.target.classList.contains('avatar') ? e.target : e.target.querySelector(':scope > .avatar.sc-av-lifted');
-        if (av) placeFrame(av);
+        if (av) queueLift(av);
     }))
     : null;
+const liftQueue = new Map();             // avatar -> 1: input styles changed, 2: size/position changed
+const liftInputs = new WeakMap();        // ignore our own --sc-av-* style mutations
+const liftAfter = new Map();             // one shared timer for the end of slide-in animations
+let liftFrame = 0, liftTimer = null;
+
+function queueLift(av, sync = false) {
+    if (!av) return;
+    liftQueue.set(av, (liftQueue.get(av) || 0) | (sync ? 1 : 2));
+    if (!liftFrame) liftFrame = requestAnimationFrame(flushLifts);
+}
+function flushLifts() {
+    liftFrame = 0;
+    const jobs = [...liftQueue];
+    liftQueue.clear();
+    const place = [];
+    for (const [av, flags] of jobs) {
+        if (!av.isConnected) { releaseLift(av); continue; }
+        const changed = flags & 1 ? syncLift(av) : false;
+        if (changed || (flags & 2)) place.push(av);
+    }
+    placeFrames(place);
+}
+function settleLift(av) {
+    liftAfter.set(av, Date.now() + 700);
+    if (liftTimer === null) liftTimer = setTimeout(settleLifts, 700);
+}
+function settleLifts() {
+    liftTimer = null;
+    const now = Date.now();
+    let next = Infinity;
+    for (const [av, at] of liftAfter) {
+        if (at <= now) { liftAfter.delete(av); queueLift(av); }
+        else next = Math.min(next, at);
+    }
+    if (liftAfter.size) liftTimer = setTimeout(settleLifts, Math.max(1, next - now));
+}
+function frameStyle(el, name, value) {
+    if (el.style.getPropertyValue(name) !== value) el.style.setProperty(name, value);
+}
+function liftStyleInput(av, img) {
+    // Position and transforms can change without triggering ResizeObserver.
+    // Only our clipping variables are excluded from the input signature.
+    const style = Array.from(av.style).filter((name) => name !== '--sc-av-r' && name !== '--sc-av-clip')
+        .map((name) => [name, av.style.getPropertyValue(name), av.style.getPropertyPriority(name)]);
+    return JSON.stringify([style, img?.style.cssText || '']);
+}
 // Put the layer exactly over the avatar as it is seen on screen. Measured from the
 // screen rather than from offsetLeft, so it holds whatever the chat style does to
 // the avatar's box (moved, transformed, zoomed, a wrapper with display: contents).
-function placeFrame(av) {
-    const layer = av.parentElement?.querySelector(':scope > .sc-av-frame');
-    if (!layer) return;
-    clipToPicture(av);
-    layer.style.transform = 'none';             // measure the plain box; style.css scales the reticle
-    layer.style.left = '0px';
-    layer.style.top = '0px';
-    layer.style.width = `${av.offsetWidth || 1}px`;
-    layer.style.height = `${av.offsetHeight || 1}px`;
-    const a = av.getBoundingClientRect();
-    const o = layer.getBoundingClientRect();
-    layer.style.removeProperty('transform');
-    if (!a.width || !o.width) return;
-    const k = o.width / (av.offsetWidth || 1);   // page zoom inside this message, if any
-    layer.style.left = `${(a.left - o.left) / k}px`;
-    layer.style.top = `${(a.top - o.top) / k}px`;
-    layer.style.width = `${a.width / k}px`;
-    layer.style.height = `${a.height / k}px`;
+// Read all avatars, prepare all layers, then measure them together. Alternating
+// reads and writes per style record forced layout hundreds of times on long chats.
+function placeFrames(avatars) {
+    const boxes = [];
+    for (const av of avatars) {
+        const layer = liftInputs.get(av)?.layer;
+        if (!layer?.isConnected || layer.parentElement !== av.parentElement || !av.classList.contains('sc-av-lifted')) continue;
+        const width = av.offsetWidth || 1, height = av.offsetHeight || 1;
+        const rect = av.getBoundingClientRect();
+        if (!rect.width) continue;
+        boxes.push({ av, layer, width, height, rect, clip: pictureClip(av) });
+    }
+    for (const { av, layer, width, height, clip } of boxes) {
+        if (clip) frameStyle(av, '--sc-av-clip', clip);
+        frameStyle(layer, 'transform', 'none');  // style.css scales the non-Ripple reticle
+        frameStyle(layer, 'left', '0px');
+        frameStyle(layer, 'top', '0px');
+        frameStyle(layer, 'width', `${width}px`);
+        frameStyle(layer, 'height', `${height}px`);
+    }
+    const measured = boxes.map((box) => ({ ...box, origin: box.layer.getBoundingClientRect() }));
+    for (const { layer, width, rect: a, origin: o } of measured) {
+        layer.style.removeProperty('transform');
+        if (!o.width) continue;
+        const k = o.width / width;              // page zoom inside this message, if any
+        frameStyle(layer, 'left', `${(a.left - o.left) / k}px`);
+        frameStyle(layer, 'top', `${(a.top - o.top) / k}px`);
+        frameStyle(layer, 'width', `${a.width / k}px`);
+        frameStyle(layer, 'height', `${a.height / k}px`);
+    }
 }
 // The window the picture is seen through: the picture's own place and rounding in the
 // box, measured before any zoom (offsets ignore transforms). The picture can be smaller
 // than the box, so clipping the whole box would leave square corners showing.
-function clipToPicture(av) {
+function pictureClip(av) {
     const img = av.querySelector(':scope > img');
     if (!img || !img.offsetWidth) return;
     const inBox = img.offsetParent === av;
@@ -1484,19 +1542,42 @@ function clipToPicture(av) {
     const r = Math.max(0, av.offsetWidth - l - img.offsetWidth);
     const b = Math.max(0, av.offsetHeight - t - img.offsetHeight);
     const round = av.style.getPropertyValue('--sc-av-r') || '0px';
-    const value = `inset(${t}px ${r}px ${b}px ${l}px round ${round})`;
-    if (av.style.getPropertyValue('--sc-av-clip') !== value) av.style.setProperty('--sc-av-clip', value);
+    return `inset(${t}px ${r}px ${b}px ${l}px round ${round})`;
 }
 function placeAllFrames() {
-    document.querySelectorAll('#chat .mes .avatar.sc-av-lifted').forEach(placeFrame);
+    document.querySelectorAll('#chat .mes .avatar.sc-av-lifted').forEach((av) => queueLift(av));
+}
+function releaseLift(av, host = liftInputs.get(av)?.host || av.parentElement) {
+    liftQueue.delete(av);
+    liftAfter.delete(av);
+    if (!liftAfter.size && liftTimer !== null) { clearTimeout(liftTimer); liftTimer = null; }
+    const layer = liftInputs.get(av)?.layer
+        || (av.classList.contains('sc-av-lifted') ? host?.querySelector(':scope > .sc-av-frame') : null);
+    layer?.remove();
+    const shared = host?.querySelector(':scope > .sc-av-frame');
+    if (!shared) host?.classList.remove('sc-av-host');
+    av.classList.remove('sc-av-lifted');
+    av.style.removeProperty('--sc-av-r');
+    av.style.removeProperty('--sc-av-clip');
+    delete av.dataset.scAvR;
+    liftWatch?.unobserve(av);
+    if (host && !shared) liftWatch?.unobserve(host);
+    liftInputs.delete(av);
 }
 function syncLift(av) {
     const host = av.parentElement;
-    if (!host) return;
-    let layer = host.querySelector(':scope > .sc-av-frame');
+    if (!host) return false;
     const img = av.querySelector(':scope > img');
+    const overflow = av.style.getPropertyValue('overflow');
+    const input = liftStyleInput(av, img);
+    const prev = liftInputs.get(av);
+    if (prev && (prev.host !== host || prev.img !== img)) releaseLift(av, prev.host);
+    let layer = prev?.host === host && prev.img === img && prev.layer?.parentElement === host ? prev.layer : null;
+    const active = !!img && (overflow === 'hidden' || !!img.style.getPropertyValue('width'));
+    if (prev?.host === host && prev.img === img && prev.input === input
+        && (active ? layer && av.classList.contains('sc-av-lifted') : !layer && !av.classList.contains('sc-av-lifted'))) return false;
     // zoomed (the box is clipped) or just reframed (the picture is resized to the box)
-    if (av.style.getPropertyValue('overflow') === 'hidden' || !!img?.style.getPropertyValue('width')) {
+    if (active) {
         // the picture's own rounding would be zoomed and moved with it and leave a bare
         // corner in the window; the box takes that rounding over (style.css)
         if (img && !av.dataset.scAvR) {
@@ -1514,36 +1595,50 @@ function syncLift(av) {
             av.after(layer);
             if (!av.dataset.scLiftEv) {           // a chat style may slide the avatar with a transition
                 av.dataset.scLiftEv = '1';
-                av.addEventListener('transitionend', () => placeFrame(av));
-                av.addEventListener('animationend', () => placeFrame(av));
+                av.addEventListener('transitionend', () => queueLift(av));
+                av.addEventListener('animationend', () => queueLift(av));
             }
             liftWatch?.observe(av);
             liftWatch?.observe(host);
         }
-        av.classList.add('sc-av-lifted');
-        placeFrame(av);
-        setTimeout(() => placeFrame(av), 700);   // after a message's slide-in animation
+        if (!av.classList.contains('sc-av-lifted')) av.classList.add('sc-av-lifted');
+        liftInputs.set(av, { host, img, input, layer });
+        settleLift(av);
+        return true;
     } else if (layer || av.classList.contains('sc-av-lifted')) {
-        layer?.remove();
-        av.classList.remove('sc-av-lifted');
-        av.style.removeProperty('--sc-av-r');
-        av.style.removeProperty('--sc-av-clip');
-        delete av.dataset.scAvR;
-        host.classList.remove('sc-av-host');
-        liftWatch?.unobserve(av);
-        liftWatch?.unobserve(host);
+        releaseLift(av);
     }
+    liftInputs.set(av, { host, img, input, layer: null });
+    return false;
+}
+function avatarsWithin(node) {
+    if (node.nodeType !== 1) return [];
+    return node.matches('.avatar') ? [node] : node.querySelectorAll('.avatar');
 }
 function onAvatarStyle(records) {
     for (const r of records) {
         if (r.type === 'attributes') {
             const t = r.target;
-            if (t.classList?.contains('avatar')) syncLift(t);
-            else if (t.tagName === 'IMG' && t.parentElement?.classList.contains('avatar')) syncLift(t.parentElement);
+            if (t.classList?.contains('avatar')) queueLift(t, true);
+            else if (t.tagName === 'IMG' && t.parentElement?.classList.contains('avatar')) queueLift(t.parentElement, true);
         } else {
-            for (const n of r.addedNodes) if (n.nodeType === 1) n.querySelectorAll?.('.mes .avatar, .avatar').forEach(syncLift);
+            for (const n of r.removedNodes) for (const av of avatarsWithin(n)) {
+                if (!av.isConnected && liftInputs.has(av)) releaseLift(av);
+            }
+            // Another renderer may remove just the frame while retaining the avatar.
+            if ([...r.removedNodes].some((n) => n.nodeType === 1 && n.classList?.contains('sc-av-frame'))) {
+                const av = r.target.querySelector?.(':scope > .avatar.sc-av-lifted');
+                if (av?.isConnected) queueLift(av, true);
+            }
+            for (const n of r.addedNodes) for (const av of avatarsWithin(n)) queueLift(av, true);
+            // An image can be replaced without replacing its avatar container.
+            if (r.target.classList?.contains('avatar')) queueLift(r.target, true);
         }
     }
+}
+function onAvatarLoad(e) {
+    const av = e.target.tagName === 'IMG' ? e.target.parentElement : null;
+    if (av?.classList.contains('avatar')) queueLift(av);
 }
 
 function markAllCaps() {
@@ -1578,11 +1673,12 @@ function init() {
         new MutationObserver((records) => { mount(); onChatGrow(records); }).observe(chatEl, { childList: true });
         new MutationObserver(onChatText).observe(chatEl, { childList: true, subtree: true, characterData: true });
         new MutationObserver(onAvatarStyle).observe(chatEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
-        chatEl.querySelectorAll('.mes .avatar').forEach(syncLift);
+        chatEl.querySelectorAll('.mes .avatar').forEach((av) => queueLift(av, true));
         window.addEventListener('resize', placeAllFrames, { passive: true });
         chatEl.addEventListener('click', onClick);
         chatEl.addEventListener('input', onInput);
         chatEl.addEventListener('error', onImageError, true);
+        chatEl.addEventListener('load', onAvatarLoad, true);
     }
     const { eventSource, eventTypes: E } = ctx();
     const on = (type, fn) => { if (type) eventSource?.on?.(type, fn); };     // older versions lack some events
