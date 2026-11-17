@@ -193,6 +193,32 @@ const ROW_MAX = 12;       // cameos per sideways row; "frequent" and "all" appea
 const lastSnips = new Map(); // avatar -> last line of their latest chat
 const chatCounts = new Map();   // avatar -> number of chats (lazy, cached)
 const pendingCounts = new Set(); // avatars whose count is being fetched right now
+const snipVersions = new Map();
+const snipChats = new Map();
+const snipRequests = new Map();
+
+function invalidateSnip(avatar) {
+    lastSnips.delete(avatar);
+    snipChats.delete(avatar);
+    snipVersions.set(avatar, (snipVersions.get(avatar) || 0) + 1);
+    snipRequests.get(avatar)?.abort();
+}
+function captureCurrentSnip() {
+    const context = ctx();
+    if (context.getCurrentChatId() === undefined) return;
+    const c = context.characters?.[context.characterId];
+    if (!c || !Array.isArray(context.chat)) return;
+    const file = stripExt(context.getCurrentChatId());
+    // Do not associate a welcome/temporary chat with a character's saved chat.
+    if (file !== stripExt(c.chat)) return;
+    let last;
+    for (let i = context.chat.length - 1; i >= 0; i--) {
+        if (typeof context.chat[i]?.mes === 'string' && !context.chat[i].is_system) { last = context.chat[i]; break; }
+    }
+    invalidateSnip(c.avatar);
+    lastSnips.set(c.avatar, cleanSnip(last?.mes, 120));
+    snipChats.set(c.avatar, file);
+}
 
 function characterIndex(avatar) {
     return ctx().characters.findIndex((c) => c.avatar === avatar);
@@ -445,18 +471,31 @@ function lastCharacter() {
 // the continue bar shows a line from the last chat; fetched once per character
 async function loadLastSnip() {
     const c = lastCharacter();
+    if (c && snipChats.has(c.avatar) && snipChats.get(c.avatar) !== stripExt(c.chat)) invalidateSnip(c.avatar);
     if (!c || lastSnips.has(c.avatar)) return;
+    const version = snipVersions.get(c.avatar) || 0;
+    const file = stripExt(c.chat);
+    const controller = new AbortController();
+    snipRequests.set(c.avatar, controller);
     lastSnips.set(c.avatar, '');
+    snipChats.set(c.avatar, file);
     try {
-        const list = await fetchChats(c.avatar);
+        const list = await fetchChats(c.avatar, { signal: controller.signal });
+        if (controller.signal.aborted || (snipVersions.get(c.avatar) || 0) !== version || stripExt(c.chat) !== file) return;
         if (!list.length) return;
-        const want = `${stripExt(c.chat)}.jsonl`;
+        chatCounts.set(c.avatar, list.length);
+        const want = `${file}.jsonl`;
         const chat = list.find((x) => x.file_name === want) || list[0];
         lastSnips.set(c.avatar, cleanSnip(chat?.mes, 120));
-        const line = homeEl?.querySelector('.sc-cont-line');
+        const bar = homeEl?.querySelector('.sc-cont');
+        const line = bar?.dataset.continue === c.avatar ? bar.querySelector('.sc-cont-line') : null;
         const title = chatTitle(c.chat);
         if (line && view.mode === 'shelf') line.textContent = [title.auto ? '' : title.text, lastSnips.get(c.avatar)].filter(Boolean).join(' · ');
-    } catch { /* the bar still works without the line */ }
+    } catch {
+        if ((snipVersions.get(c.avatar) || 0) === version) invalidateSnip(c.avatar);
+        // The bar still works without a preview; a later visit can retry.
+    }
+    finally { if (snipRequests.get(c.avatar) === controller) snipRequests.delete(c.avatar); }
 }
 
 // A preview line out of a message. Status panels, thoughts and code are not the
@@ -709,18 +748,62 @@ async function jumpTo(avatar, file, mesId) {
 
 /* ── render & mount ───────────────────────────────────── */
 let homeEl = null;
+let homeShown = false;
+let homeWorkFrame = 0, homeWorkIdle = null, homeWorkTimer = null, homeWorkEpoch = 0;
+let countWatch = null;
+const countQueue = new Set();
+const countJobs = new Map();
+const COUNT_CONCURRENCY = 2;
+
+function stopHomeWork({ abort = false } = {}) {
+    homeWorkEpoch++;
+    if (homeWorkFrame) cancelAnimationFrame(homeWorkFrame);
+    if (homeWorkIdle !== null) window.cancelIdleCallback?.(homeWorkIdle);
+    if (homeWorkTimer !== null) clearTimeout(homeWorkTimer);
+    homeWorkFrame = 0; homeWorkIdle = null; homeWorkTimer = null;
+    countWatch?.disconnect(); countWatch = null;
+    for (const avatar of countQueue) if (!countJobs.has(avatar)) pendingCounts.delete(avatar);
+    countQueue.clear();
+    if (abort) {
+        for (const job of countJobs.values()) job.abort();
+        for (const job of snipRequests.values()) job.abort();
+    }
+}
+// Let the home paint before measuring tags, reading chat previews or counting
+// chats. These details must not compete with a character switch on a phone.
+function scheduleHomeWork() {
+    stopHomeWork();
+    const el = homeEl, epoch = homeWorkEpoch;
+    const live = () => epoch === homeWorkEpoch && el === homeEl && el?.isConnected;
+    if (!live()) return;
+    homeWorkFrame = requestAnimationFrame(() => {
+        if (!live()) return;
+        homeWorkFrame = requestAnimationFrame(() => {
+            homeWorkFrame = 0;
+            const run = () => {
+                homeWorkIdle = null; homeWorkTimer = null;
+                if (!live()) return;
+                setupTagScroller();
+                if (view.mode !== 'page') loadCounts();
+                if (view.mode === 'shelf' && !narrowed()) loadLastSnip();
+            };
+            if (!live()) return;
+            if (typeof window.requestIdleCallback === 'function') homeWorkIdle = window.requestIdleCallback(run, { timeout: 1200 });
+            else homeWorkTimer = setTimeout(run, 50);
+        });
+    });
+}
 
 const FOOT = '<div class="sc-foot" aria-hidden="true">✦</div>';
 
 function render() {
     if (!homeEl || !homeEl.isConnected) return;
+    stopHomeWork({ abort: view.mode === 'page' });
     cleanupTagScroller();
     if (view.mode === 'page' && !characterBy(view.avatar)) view.mode = 'shelf';
     homeEl.dataset.mode = view.mode;
     homeEl.innerHTML = (view.mode === 'page' ? pageHtml() : view.mode === 'all' ? allHtml() : shelfHtml()) + FOOT;
-    setupTagScroller();
-    if (view.mode !== 'page') loadCounts();
-    if (view.mode === 'shelf') loadLastSnip();
+    scheduleHomeWork();
 }
 
 // Typing in the search box redraws only the rows under it. The input itself is
@@ -734,42 +817,79 @@ function renderBody({ onlyIfChanged = false } = {}) {
     body.innerHTML = html;
     const cont = homeEl.querySelector('.sc-cont');
     if (cont) cont.hidden = narrowed();
-    loadCounts();
+    scheduleHomeWork();
 }
 
-// Counts are asked only for the cameos on screen, once each; avatars already
-// in flight are skipped, so typing in the search box never repeats a request.
-async function loadCounts() {
-    if (!homeEl) return;
-    const onScreen = new Set([...homeEl.querySelectorAll('[data-meta-for]')].map((el) => el.dataset.metaFor));
-    const want = [...onScreen].filter((a) => !chatCounts.has(a) && !pendingCounts.has(a) && hasChats(characterBy(a)));
-    want.forEach((a) => pendingCounts.add(a));
-    for (let i = 0; i < want.length; i += 4) {
-        await Promise.all(want.slice(i, i + 4).map(async (avatar) => {
+// One queue for every view, not four new requests on each redraw. Intersection
+// observers also respect the horizontal row's clipping, unlike a DOM query.
+function queueCount(avatar) {
+    if (chatCounts.has(avatar) || (pendingCounts.has(avatar) && !countJobs.get(avatar)?.signal.aborted) || !hasChats(characterBy(avatar))) return;
+    countQueue.add(avatar); pendingCounts.add(avatar);
+    pumpCounts();
+}
+function pumpCounts() {
+    if (!homeEl?.isConnected || view.mode === 'page') return;
+    while (countJobs.size < COUNT_CONCURRENCY && countQueue.size) {
+        let avatar;
+        for (const candidate of countQueue) if (!countJobs.has(candidate)) { avatar = candidate; break; }
+        if (avatar === undefined) break;
+        countQueue.delete(avatar);
+        if (chatCounts.has(avatar)) { pendingCounts.delete(avatar); continue; }
+        const controller = new AbortController();
+        pendingCounts.add(avatar);
+        countJobs.set(avatar, controller);
+        void (async () => {
             try {
                 const res = await fetch('/api/characters/chats', {
                     method: 'POST', headers: ctx().getRequestHeaders(),
                     body: JSON.stringify({ avatar_url: avatar, simple: true }),
+                    signal: controller.signal,
                 });
+                if (!res.ok) throw new Error('chat count failed');
                 const data = await res.json();
-                chatCounts.set(avatar, Array.isArray(data) ? data.length : 0);
-            } catch { chatCounts.set(avatar, null); }
-            pendingCounts.delete(avatar);
-            // the same character can sit in several rows at once
-            const c = characterBy(avatar);
-            if (c) homeEl?.querySelectorAll(`[data-meta-for="${CSS.escape(avatar)}"]`).forEach((metaEl) => { metaEl.textContent = metaText(c); });
-        }));
-        if (!homeEl?.isConnected) { want.forEach((a) => pendingCounts.delete(a)); return; }
+                if (!Array.isArray(data)) throw new Error('invalid chat count');
+                if (!controller.signal.aborted) {
+                    chatCounts.set(avatar, data.length);
+                    const c = characterBy(avatar);
+                    if (c && homeEl?.isConnected) homeEl.querySelectorAll(`[data-meta-for="${CSS.escape(avatar)}"]`).forEach((metaEl) => { metaEl.textContent = metaText(c); });
+                }
+            } catch { /* retry on a later visit, rather than caching an error as zero */ }
+            finally {
+                countJobs.delete(avatar); pendingCounts.delete(avatar);
+                pumpCounts();
+            }
+        })();
     }
+}
+function loadCounts() {
+    countWatch?.disconnect(); countWatch = null;
+    if (!homeEl?.isConnected) return;
+    const el = homeEl;
+    const nodes = [...el.querySelectorAll('[data-meta-for]')];
+    if (typeof IntersectionObserver !== 'function') {
+        for (const node of nodes) queueCount(node.dataset.metaFor);
+        return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+        if (el !== homeEl || !el.isConnected || view.mode === 'page') return;
+        for (const entry of entries) if (entry.isIntersecting && entry.target.isConnected && el.contains(entry.target)) {
+            observer.unobserve(entry.target);
+            queueCount(entry.target.dataset.metaFor);
+        }
+    }, { root: document.getElementById('chat'), rootMargin: '80px' });
+    countWatch = observer;
+    nodes.forEach((node) => observer.observe(node));
 }
 
 // a character's chats, newest first
-async function fetchChats(avatar) {
+async function fetchChats(avatar, { signal } = {}) {
     const res = await fetch('/api/characters/chats', {
         method: 'POST', headers: ctx().getRequestHeaders(),
         body: JSON.stringify({ avatar_url: avatar }),
+        signal,
     });
     const data = await res.json();
+    if (!res.ok || !Array.isArray(data)) throw new Error('could not load chats');
     const list = Array.isArray(data) ? data.filter((x) => x && x.file_name) : [];
     const time = (x) => toMoment(x.last_mes)?.valueOf() ?? 0;
     return list.sort((a, b) => time(b) - time(a));
@@ -807,6 +927,7 @@ function mount() {
     const s = getSettings();
     const want = s.home && isWelcomeShowing(chatEl);
     if (!want) {
+        stopHomeWork({ abort: true });
         cleanupTagScroller();
         if (homeEl?.isConnected) homeEl.remove();
         return;
@@ -816,10 +937,14 @@ function mount() {
     homeEl.id = 'sc-home';
     chatEl.prepend(homeEl);
     Object.assign(view, { mode: 'shelf', prev: 'shelf', avatar: null, query: '', archive: false, openMenu: null, chats: null });
-    // the rows rise in once, when the home appears; later redraws stay still
+    // Animate the first visit only; returning from a chat should be immediate.
     const el = homeEl;
-    el.classList.add('sc-enter');
-    setTimeout(() => el.classList.remove('sc-enter'), 900);
+    if (!homeShown && !document.body.classList.contains('no_animation')
+        && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        el.classList.add('sc-enter');
+        setTimeout(() => el.classList.remove('sc-enter'), 900);
+    }
+    homeShown = true;
     render();
     chatEl.scrollTop = 0;
 }
@@ -921,7 +1046,7 @@ async function deleteChat(avatar, file) {
         const list = await reloadChats(avatar);
         if (list?.some((x) => x.file_name === file)) throw new Error('the chat is still there');
         dropFav(avatar, file);
-        lastSnips.delete(avatar);
+        invalidateSnip(avatar);
         if (list) toast('success', T.deleted);
         view.openMenu = null;
         render();
@@ -1061,7 +1186,7 @@ function moveCharacter(from, to) {
         if (i >= 0) list[i] = to;
     }
     if (s.favChats[from]) { s.favChats[to] = s.favChats[from]; delete s.favChats[from]; }
-    chatCounts.delete(from); lastSnips.delete(from);
+    chatCounts.delete(from); invalidateSnip(from);
     save();
 }
 function dropCharacter(avatar) {
@@ -1072,7 +1197,7 @@ function dropCharacter(avatar) {
         if (i >= 0) list.splice(i, 1);
     }
     delete s.favChats[avatar];
-    chatCounts.delete(avatar); lastSnips.delete(avatar);
+    chatCounts.delete(avatar); invalidateSnip(avatar);
     save();
 }
 
@@ -1340,6 +1465,7 @@ function closeButton() {
         const icon = btn.querySelector('.drawer-icon');
         const run = async () => {
             try {
+                captureCurrentSnip();
                 const m = await st();
                 if (m?.closeCurrentChat) await m.closeCurrentChat();
                 else await ctx().executeSlashCommandsWithOptions?.('/closechat');
@@ -1357,7 +1483,17 @@ function updateCloseButton() {
     const s = getSettings();
     const btn = closeButton();
     if (!btn) return;
-    btn.hidden = !s.closeButton || ctx().getCurrentChatId() === undefined;
+    const hidden = !s.closeButton || ctx().getCurrentChatId() === undefined;
+    if (btn.hidden !== hidden) btn.hidden = hidden;
+}
+
+function loadFonts() {
+    if (document.getElementById('sc-fonts')) return;
+    const link = document.createElement('link');
+    link.id = 'sc-fonts'; link.rel = 'stylesheet'; link.media = 'print';
+    link.href = 'https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500&family=Italiana&family=Special+Elite&display=swap';
+    link.onload = () => { link.media = 'all'; };
+    document.head.appendChild(link);
 }
 
 /* ── settings panel ───────────────────────────────────── */
@@ -1423,7 +1559,7 @@ function buildPanel() {
 // the drop cap is drawn by style.css; this switches it on and off
 function applyDropCap() {
     document.body.classList.toggle('sc-dropcap', !!getSettings().dropCap);
-    markAllCaps();
+    if (getSettings().dropCap) markAllCaps();
 }
 
 // The cap is sized from its own font's letter heights. Italiana has Latin letters only,
@@ -1433,7 +1569,15 @@ function applyDropCap() {
 const LATIN_LETTER = /[A-Za-z\u00C0-\u024F\u1E00-\u1EFF]/;
 function markCap(mes) {
     const p = mes.querySelector(':scope .mes_text > p:not(:empty)');
-    const letter = p ? (/[\p{L}\p{N}]/u.exec(p.textContent) || [''])[0] : '';
+    let letter = '';
+    if (p) {
+        const text = document.createTreeWalker(p, 4); // SHOW_TEXT; stop at the first actual letter
+        let node;
+        while ((node = text.nextNode())) {
+            const match = /[\p{L}\p{N}]/u.exec(node.nodeValue || '');
+            if (match) { letter = match[0]; break; }
+        }
+    }
     const alt = !!letter && !LATIN_LETTER.test(letter);
     if (alt && mes.dataset.scCap !== 'alt') mes.dataset.scCap = 'alt';
     else if (!alt && mes.dataset.scCap) delete mes.dataset.scCap;
@@ -1648,15 +1792,19 @@ function markAllCaps() {
 const capQueue = new Set();
 let capFrame = 0;
 function onChatText(records) {
+    if (!getSettings().dropCap) return;
     for (const r of records) {
         const el = r.target.nodeType === 1 ? r.target : r.target.parentElement;
-        const mes = el?.closest?.('.mes');
+        const mes = el?.closest?.('.mes_text')?.closest('.mes');
         if (mes) capQueue.add(mes);
-        else for (const n of r.addedNodes) if (n.nodeType === 1) (n.matches('.mes') ? [n] : n.querySelectorAll('.mes')).forEach((m) => capQueue.add(m));
+        else for (const n of r.addedNodes) if (n.nodeType === 1) {
+            if (n.matches('.mes_text')) { const m = n.closest('.mes'); if (m) capQueue.add(m); }
+            else (n.matches('.mes') ? [n] : n.querySelectorAll('.mes')).forEach((m) => capQueue.add(m));
+        }
     }
     if (capQueue.size && !capFrame) capFrame = requestAnimationFrame(() => {
         capFrame = 0;
-        capQueue.forEach((m) => { if (m.isConnected) markCap(m); });
+        if (getSettings().dropCap) capQueue.forEach((m) => { if (m.isConnected) markCap(m); });
         capQueue.clear();
     });
 }
@@ -1670,7 +1818,7 @@ function init() {
 
     const chatEl = document.getElementById('chat');
     if (chatEl) {
-        new MutationObserver((records) => { mount(); onChatGrow(records); }).observe(chatEl, { childList: true });
+        new MutationObserver((records) => { updateCloseButton(); mount(); onChatGrow(records); }).observe(chatEl, { childList: true });
         new MutationObserver(onChatText).observe(chatEl, { childList: true, subtree: true, characterData: true });
         new MutationObserver(onAvatarStyle).observe(chatEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
         chatEl.querySelectorAll('.mes .avatar').forEach((av) => queueLift(av, true));
@@ -1686,13 +1834,19 @@ function init() {
     // the character whose chat is open: its count is what changes while the home is away
     const current = () => ctx().characters?.[ctx().characterId]?.avatar;
 
-    on(E.CHAT_CHANGED, () => { turnOver(); closeTarot(); lastSnips.clear(); chatCounts.delete(current()); setTimeout(() => { mount(); updateCloseButton(); }, 0); });
+    on(E.CHAT_CHANGED, () => { turnOver(); closeTarot(); captureCurrentSnip(); chatCounts.delete(current()); updateCloseButton(); mount(); });
+    for (const type of [E.MESSAGE_SENT, E.MESSAGE_RECEIVED, E.MESSAGE_EDITED, E.MESSAGE_UPDATED, E.MESSAGE_SWIPED, E.MESSAGE_DELETED]) on(type, captureCurrentSnip);
     // the moth and the cameo: from "sent" to the first word of the reply; quiet background generations do not count
     on(E.GENERATION_AFTER_COMMANDS, (type, opts, dryRun) => { if (!dryRun && type !== 'quiet') turnBegan(type, opts); });
     on(E.STREAM_TOKEN_RECEIVED, (text) => { if (String(text ?? '').trim()) turnOver(); });
     for (const type of [E.MESSAGE_RECEIVED, E.GENERATION_ENDED, E.GENERATION_STOPPED]) on(type, turnOver);
     new MutationObserver(onGeneratingFlag).observe(document.body, { attributes: true, attributeFilter: ['data-generating'] });
-    on(E.CHAT_DELETED, (name) => { const a = current(); if (a) { chatCounts.delete(a); dropFav(a, `${name}.jsonl`); } lastSnips.clear(); redraw(); });
+    on(E.CHAT_DELETED, (name) => {
+        const a = current();
+        if (a) { chatCounts.delete(a); dropFav(a, `${name}.jsonl`); invalidateSnip(a); }
+        else for (const avatar of lastSnips.keys()) invalidateSnip(avatar);
+        redraw();
+    });
     on(E.CHAT_RENAMED, (d) => { if (!renaming && d?.avatarId && !d.groupId) moveFav(d.avatarId, d.oldFileName, d.newFileName); });
     on(E.CHARACTER_EDITED, redraw);
     on(E.CHARACTER_RENAMED, moveCharacter);
@@ -1701,6 +1855,7 @@ function init() {
     on(E.CHARACTER_PAGE_LOADED, () => renderBody({ onlyIfChanged: true }));
     mount();
     updateCloseButton();
+    loadFonts();
 }
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

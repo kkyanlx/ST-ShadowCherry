@@ -4,8 +4,7 @@
     (--sc-* in the Moonlit preset); every value has a fallback, so it also works
     under other themes. */
 
-/* the theme's fonts, for the loading screen: it shows before the theme is applied */
-@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500&family=Italiana&family=Special+Elite&display=swap");
+/* Fonts are loaded without blocking extension activation by index.js. */
 
 #sc-home,
 #sc-tarot,
@@ -319,6 +318,9 @@
 @media (prefers-reduced-motion: reduce) {
     #sc-home .sc-sh .sc-cameo { transition: none; }
 }
+body.no_animation #sc-home.sc-enter > :not(.sc-body),
+body.no_animation #sc-home.sc-enter .sc-body > *,
+body.no_animation #sc-home .sc-fresh { animation: none; }
 
 /* ── close-chat cross (top bar) ── */
 #sc-close-chat[hidden] { display: none !important; }
