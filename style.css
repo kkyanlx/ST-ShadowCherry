@@ -627,6 +627,15 @@ body.ripplestyle #chat#chat .mes .mesAvatarWrapper .avatar.sc-av-lifted img {
 
 /* Keep the picture window round independently of image zoom and the
    previously selected chat style. The decorative ring is a separate layer. */
+/* The original Shadow Cherry preset fills the frame even when Moonlit
+   gives the image a smaller maximum than its surrounding avatar. */
+body:not(.ripplestyle) #chat#chat .mes .mesAvatarWrapper > .avatar > img {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    object-fit: cover;
+}
 body:not(.ripplestyle) #chat#chat .mes .mesAvatarWrapper > .avatar:not(.sc-av-lifted) > img {
     border-radius: 50% !important;
 }
@@ -646,6 +655,15 @@ body:not(.ripplestyle) #chat#chat .mes .mesAvatarWrapper > .avatar.sc-av-lifted 
     vertical-align: middle;
     margin: 6px 3px;
     pointer-events: none;
+}
+/* The mirrored header shares its lower half with the persona name.
+   Align this control with Moonlit’s message number in the upper half. */
+body:is(.echostyle, .tidestyle) #chat .mes[is_user="true"] > .mesAvatarWrapper > .sc-gear-slot {
+    position: relative;
+    top: calc(var(--custom-ChatAvatar, 40px) * -.35);
+}
+body.tidestyle #chat .mes[is_user="true"] > .mesAvatarWrapper > .sc-gear-slot {
+    top: calc(var(--custom-ChatAvatar, 40px) * -.375);
 }
 body.ripplestyle #chat .name_text > .sc-gear-slot { margin: 0 3px; }
 #chat .mes > .aa-edit-btn {
