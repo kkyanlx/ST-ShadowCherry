@@ -645,7 +645,7 @@ body:not(.ripplestyle) #chat#chat .mes .mesAvatarWrapper > .avatar.sc-av-lifted 
 }
 
 /* The gear remains AA's original child of the message. Its empty layout
-   slot is beside the portrait, or beside the name in Ripple's static header. */
+   slot follows the metadata layout of the active chat style. */
 #chat .sc-gear-slot {
     display: inline-block;
     width: 16px;
@@ -658,14 +658,14 @@ body:not(.ripplestyle) #chat#chat .mes .mesAvatarWrapper > .avatar.sc-av-lifted 
 }
 /* Echo and Tide position the number above the name on both sides.
    Flex row reversal already mirrors the horizontal order for the persona. */
-body:is(.echostyle, .tidestyle) #chat .mes > .mesAvatarWrapper > .sc-gear-slot {
+body:is(.echostyle, .tidestyle, .whisperstyle, .hushstyle) #chat .mes > .mesAvatarWrapper > .sc-gear-slot {
     position: relative;
     top: calc(var(--custom-ChatAvatar, 40px) * -.35);
 }
-body.tidestyle #chat .mes > .mesAvatarWrapper > .sc-gear-slot {
+body:is(.tidestyle, .whisperstyle, .hushstyle) #chat .mes > .mesAvatarWrapper > .sc-gear-slot {
     top: calc(var(--custom-ChatAvatar, 40px) * -.375);
 }
-body.tidestyle.big-avatars #chat .mes > .mesAvatarWrapper > .sc-gear-slot {
+body:is(.tidestyle, .whisperstyle, .hushstyle).big-avatars #chat .mes > .mesAvatarWrapper > .sc-gear-slot {
     top: 0;
 }
 
@@ -677,7 +677,29 @@ body:is(.whisperstyle, .hushstyle) #chat .mes > .mesAvatarWrapper {
 body:is(.whisperstyle, .hushstyle) #chat .mes > .mesAvatarWrapper > :where(.avatar, .mes_timer, .mesIDDisplay, .tokenCounterDisplay) {
     pointer-events: auto;
 }
-body.ripplestyle #chat .name_text > .sc-gear-slot { margin: 0 3px; }
+body.ripplestyle #chat .mesAvatarWrapper > .sc-gear-slot {
+    justify-self: center;
+    margin: 3px 0 0;
+}
+
+/* Echo floats persona text. Keep the editing toolbar in normal flow so
+   long text and wrapped buttons both contribute their real height. */
+body.echostyle #chat .mes .mes_block:has(.edit_textarea) {
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 8px !important;
+}
+body.echostyle #chat .mes .mes_block:has(.edit_textarea) > .ch_name {
+    display: contents;
+}
+body.echostyle #chat .mes:has(.edit_textarea) .mes_edit_buttons {
+    position: static !important;
+    order: 99;
+    align-self: stretch;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
 #chat .mes > .aa-edit-btn {
     z-index: 8 !important;
     width: 16px !important;

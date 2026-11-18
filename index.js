@@ -771,11 +771,12 @@ async function loadLines(seq) {
 
 // open the chat and scroll to the message
 async function jumpTo(avatar, file, mesId) {
-    await openCharacterChatFile(avatar, file);
+    if (!await openCharacterChatFile(avatar, file)) return;
     const want = stripExt(file);
-    for (let i = 0; i < 30 && ctx().getCurrentChatId() !== want; i++) await new Promise((r) => setTimeout(r, 100));
+    for (let i = 0; i < 30 && isSelectedCharacter(avatar) && ctx().getCurrentChatId() !== want; i++) await new Promise((r) => setTimeout(r, 100));
     if (ctx().getCurrentChatId() !== want) return;
     await new Promise((r) => setTimeout(r, 250));     // let the messages render
+    if (!isSelectedCharacter(avatar) || ctx().getCurrentChatId() !== want) return;
     try { await ctx().executeSlashCommandsWithOptions(`/chat-jump ${Number(mesId)}`, { showOutput: false }); }
     catch (e) { console.warn('[Shadow Cherry] chat-jump failed', e); }
 }
@@ -1002,15 +1003,22 @@ function mount() {
 }
 
 /* ── actions ──────────────────────────────────────────── */
+function isSelectedCharacter(avatar) {
+    const context = ctx();
+    return !context.groupId && context.characters[context.characterId]?.avatar === avatar;
+}
+
 async function openCharacterChatFile(avatar, file) {
     const id = characterIndex(avatar);
     if (id < 0) return;
     try {
         await ctx().selectCharacterById(id);
         const m = await st();
+        if (!isSelectedCharacter(avatar)) return false;
         try { m?.setActiveCharacter?.(avatar); save(); } catch { /* optional */ }
         const name = stripExt(file);
         if (name && ctx().getCurrentChatId() !== name) await ctx().openCharacterChat(name);
+        return isSelectedCharacter(avatar);
     } catch (e) {
         console.error('[Shadow Cherry] open chat failed', e);
         toast('error', T.failed);
@@ -1026,6 +1034,7 @@ async function newChat(avatar) {
         await ctx().selectCharacterById(id);
         if (first) return;
         const m = await st();
+        if (!isSelectedCharacter(avatar)) return;
         if (m?.doNewChat) await m.doNewChat({ deleteCurrentChat: false });
         else document.getElementById('option_start_new_chat')?.click();
     } catch (e) {
@@ -1053,8 +1062,8 @@ function dropFav(avatar, file) {
 
 let renaming = false;     // our own rename is in progress: skip the CHAT_RENAMED echo
 async function renameChat(avatar, file) {
-    const id = characterIndex(avatar);
-    if (id < 0) return;
+    if (!characterBy(avatar)) return;
+    const before = new Set((view.chats || []).map((x) => x.file_name));
     const oldName = stripExt(file);
     const { callGenericPopup, POPUP_TYPE } = ctx();
     const typed = await callGenericPopup(`<h3>${esc(T.renamePrompt)}</h3>`, POPUP_TYPE.INPUT, oldName);
@@ -1062,8 +1071,9 @@ async function renameChat(avatar, file) {
     if (!newName || newName === oldName) return;
     try {
         const m = await st();
+        const id = characterIndex(avatar);
+        if (id < 0) return;
         if (!m?.renameGroupOrCharacterChat) throw new Error('renameGroupOrCharacterChat missing');
-        const before = new Set((view.chats || []).map((x) => x.file_name));
         const wasCurrent = characterBy(avatar)?.chat === oldName;
         renaming = true;
         try { await m.renameGroupOrCharacterChat({ characterId: String(id), oldFileName: oldName, newFileName: newName, loader: false }); }
@@ -1073,7 +1083,10 @@ async function renameChat(avatar, file) {
         if (list && !list.some((x) => x.file_name === file)) {
             const renamed = list.find((x) => !before.has(x.file_name))?.file_name || `${newName}.jsonl`;
             // "continue" opens the character's current chat: keep it pointing at this file
-            if (wasCurrent) { try { await m.updateRemoteChatName?.(id, stripExt(renamed)); } catch { /* optional */ } }
+            const currentId = characterIndex(avatar);
+            if (wasCurrent && currentId >= 0 && ctx().characters[currentId].chat === oldName) {
+                try { await m.updateRemoteChatName?.(currentId, stripExt(renamed)); } catch { /* optional */ }
+            }
             moveFav(avatar, file, renamed);
             toast('success', T.renamed);
         }
@@ -1085,13 +1098,14 @@ async function renameChat(avatar, file) {
 }
 
 async function deleteChat(avatar, file) {
-    const id = characterIndex(avatar);
-    if (id < 0) return;
+    if (!characterBy(avatar)) return;
     const { callGenericPopup, POPUP_TYPE } = ctx();
     const ok = await callGenericPopup(esc(T.deleteConfirm), POPUP_TYPE.CONFIRM);
     if (!ok) return;
     try {
         const m = await st();
+        const id = characterIndex(avatar);
+        if (id < 0) return;
         if (!m?.deleteCharacterChatByName) throw new Error('deleteCharacterChatByName missing');
         await m.deleteCharacterChatByName(String(id), stripExt(file));
         // it only logs when the server refuses, so check that the file is really gone
@@ -1100,7 +1114,7 @@ async function deleteChat(avatar, file) {
         if (list.some((x) => x.file_name === file)) throw new Error('the chat is still there');
         dropFav(avatar, file);
         invalidateSnip(avatar);
-        if (list) toast('success', T.deleted);
+        toast('success', T.deleted);
         view.openMenu = null;
         render();
     } catch (e) {
@@ -1861,19 +1875,21 @@ function placeGearSlot(mes, avatar) {
         gearSlots.delete(mes);
         return;
     }
-    const ripple = document.body.classList.contains('ripplestyle');
-    const host = ripple ? mes.querySelector('.mes_block .ch_name .name_text') : avatar.parentElement;
-    if (!host) { slot?.remove(); return; }
+    const host = avatar.parentElement;
+    const styles = document.body.classList;
+    let previous = avatar;
+    if (styles.contains('ripplestyle')) {
+        previous = host.querySelector('.tokenCounterDisplay') || host.querySelector('.mes_timer') || host.querySelector('.mesIDDisplay') || avatar;
+    } else if (mes.getAttribute('is_user') === 'true' && (styles.contains('whisperstyle') || styles.contains('hushstyle'))) {
+        previous = host.querySelector('.mesIDDisplay') || avatar;
+    }
     if (!slot) {
         slot = document.createElement('span');
         slot.className = 'sc-gear-slot';
         slot.setAttribute('aria-hidden', 'true');
         gearSlots.set(mes, slot);
     }
-    if (slot.parentElement !== host) {
-        if (ripple) host.appendChild(slot);
-        else avatar.after(slot);
-    }
+    if (previous.nextElementSibling !== slot) previous.after(slot);
 }
 function syncMessageGear(mes) {
     const button = mes.isConnected && mes.querySelector(':scope > .aa-edit-btn');
@@ -1965,15 +1981,12 @@ function onAvatarStyle(records) {
                 gearMessages.add(r.target);
             }
             if (r.target.classList.contains('mesAvatarWrapper') &&
-                [...r.addedNodes, ...r.removedNodes].some((n) => n.nodeType === 1 && n.classList.contains('avatar'))) {
+                [...r.addedNodes, ...r.removedNodes].some((n) => n.nodeType === 1 && n.matches('.avatar, .mesIDDisplay, .mes_timer, .tokenCounterDisplay'))) {
                 gearMessages.add(r.target.closest('.mes'));
             }
             for (const n of r.removedNodes) for (const av of avatarsWithin(n)) {
                 if (editGearFallback) gearMessages.add(av.closest('.mes'));
                 if (!av.isConnected && liftInputs.has(av)) releaseLift(av);
-            }
-            if (r.removedNodes.length && (r.target.closest('.ch_name') || r.target.classList.contains('mes_block'))) {
-                gearMessages.add(r.target.closest('.mes'));
             }
             // Another renderer may remove just the frame while retaining the avatar.
             if ([...r.removedNodes].some((n) => n.nodeType === 1 && n.classList?.contains('sc-av-frame'))) {
@@ -2035,7 +2048,7 @@ function init() {
         new MutationObserver(onAvatarStyle).observe(chatEl, { childList: true, subtree: true, attributes: true, attributeFilter: ['style'] });
         chatEl.querySelectorAll('.mes .avatar').forEach((av) => queueLift(av, true));
         // A style can mirror a message without resizing its avatar or wrapper.
-        const layoutClasses = /^(?:flatchat|bubblechat|documentstyle|echostyle|whisperstyle|hushstyle|ripplestyle|tidestyle|big-avatars|hideChatAvatars)$/;
+        const layoutClasses = /^(?:flatchat|bubblechat|documentstyle|echostyle|whisperstyle|hushstyle|ripplestyle|tidestyle|big-avatars|hideChatAvatars|no-timer|no-tokenCount|no-mesIDDisplay)$/;
         const layoutKey = () => Array.from(document.body.classList).filter((name) => layoutClasses.test(name)).sort().join(' ');
         let layout = layoutKey();
         new MutationObserver(() => {
