@@ -682,22 +682,56 @@ body.ripplestyle #chat .mesAvatarWrapper > .sc-gear-slot {
     margin: 3px 0 0;
 }
 
-/* Echo floats persona text. Keep the editing toolbar in normal flow so
-   long text and wrapped buttons both contribute their real height. */
-body.echostyle #chat .mes .mes_block:has(.edit_textarea) {
-    display: flex;
-    flex-direction: column;
-    padding-bottom: 8px !important;
+/* In editing mode Echo paints the bubble on .mes_text. Its subgrid
+   reserves the toolbar's actual height, including a wrapped second row.
+   Keep Tavern's original controls in the header DOM for save and cancel. */
+#chat#chat .mes .mes_block:has(.edit_textarea) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto;
+    padding-bottom: 0 !important;
 }
-body.echostyle #chat .mes .mes_block:has(.edit_textarea) > .ch_name {
+#chat#chat .mes_block:has(.edit_textarea) > .ch_name {
     display: contents;
 }
-body.echostyle #chat .mes:has(.edit_textarea) .mes_edit_buttons {
+#chat#chat .mes_block:has(.edit_textarea) > .mes_reasoning_details {
+    grid-area: 2 / 1;
+}
+#chat#chat .mes_block:has(.edit_textarea) > .ch_name > .mes_edit_buttons {
+    grid-area: 4 / 1;
     position: static !important;
-    order: 99;
-    align-self: stretch;
-    justify-content: center;
-    flex-wrap: wrap;
+    z-index: 5;
+    align-self: end;
+    margin: 6px 0 8px !important;
+}
+#chat#chat .mes_text:has(> .edit_textarea) {
+    grid-area: 3 / 1;
+}
+body.echostyle #chat#chat .mes .mes_text:has(> .edit_textarea) {
+    grid-area: 3 / 1 / 5;
+    display: grid;
+    grid-template-rows: subgrid;
+    grid-template-columns: minmax(0, 1fr);
+    margin-bottom: 0 !important;
+}
+body.echostyle #chat .mes .edit_textarea {
+    grid-row: 1;
+}
+body.tidestyle #chat .mes .mes_block:has(.edit_textarea) {
+    --sc-edit-column: 70%;
+}
+@media (max-width: 1000px) {
+    body.tidestyle #chat .mes .mes_block:has(.edit_textarea) {
+        --sc-edit-column: 90%;
+    }
+}
+body.tidestyle #chat .mes .mes_text:has(> .edit_textarea),
+body.tidestyle #chat .mes .mes_edit_buttons {
+    width: var(--sc-edit-column);
+    justify-self: start;
+}
+body.tidestyle #chat .mes[is_user="true"] :is(.mes_text:has(> .edit_textarea), .mes_edit_buttons) {
+    justify-self: end;
 }
 
 #chat .mes > .aa-edit-btn {
