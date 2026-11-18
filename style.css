@@ -609,11 +609,17 @@ body.ripplestyle #chat#chat .mes .mesAvatarWrapper .avatar.sc-av-lifted {
     -webkit-clip-path: none;
     clip-path: none;
     box-sizing: border-box;
-    padding: 10.53% !important;
+    /* Track sizes are relative to this portrait on their respective axes. */
+    display: grid !important;
+    grid-template-columns: 1fr 78.95% 1fr;
+    grid-template-rows: 1fr 78.95% 1fr;
+    gap: 0;
+    padding: 0 !important;
     -webkit-mask: var(--sc-shape) center / 78.95% 78.95% no-repeat;
     mask: var(--sc-shape) center / 78.95% 78.95% no-repeat;
 }
 body.ripplestyle #chat#chat .mes .mesAvatarWrapper .avatar.sc-av-lifted img {
+    grid-area: 2 / 2;
     position: static !important;
     -webkit-mask: none !important;
     mask: none !important;
@@ -630,11 +636,15 @@ body.ripplestyle #chat#chat .mes .mesAvatarWrapper .avatar.sc-av-lifted img {
 @media (hover: hover) and (pointer: fine) {
     #chat .mes > .mesAvatarWrapper:has(> .avatar:hover) ~ .aa-edit-btn { opacity: 0.85; }
 }
-@media (pointer: coarse) {
+@media (hover: none), (pointer: coarse), (max-width: 768px) {
     #chat .mes > .aa-edit-btn {
+        opacity: .65 !important;
+        color: var(--sc-porcelain, var(--SmartThemeBodyColor));
+        background: rgba(24, 20, 23, .65) !important;
         width: 28px !important;
         height: 28px !important;
     }
+    #chat .mes > .aa-edit-btn:active { opacity: 1 !important; }
 }
 body.hideChatAvatars #chat .mes > .aa-edit-btn,
 #chat .mes.smallSysMes > .aa-edit-btn,

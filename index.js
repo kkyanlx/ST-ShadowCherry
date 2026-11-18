@@ -1724,15 +1724,21 @@ function liftStyleInput(av, img) {
 // reads and writes per style record forced layout hundreds of times on long chats.
 function placeFrames(avatars) {
     const boxes = [];
+    const hidden = [];
     for (const av of avatars) {
         const layer = liftInputs.get(av)?.layer;
         if (!layer?.isConnected || layer.parentElement !== av.parentElement || !av.classList.contains('sc-av-lifted')) continue;
         const width = av.offsetWidth || 1, height = av.offsetHeight || 1;
         const rect = av.getBoundingClientRect();
-        if (!rect.width) continue;
+        if (!rect.width || !rect.height || getComputedStyle(av).visibility === 'hidden') {
+            hidden.push(layer);
+            continue;
+        }
         boxes.push({ av, layer, width, height, rect, clip: pictureClip(av) });
     }
+    for (const layer of hidden) frameStyle(layer, 'visibility', 'hidden');
     for (const { av, layer, width, height, clip } of boxes) {
+        layer.style.removeProperty('visibility');
         if (clip) frameStyle(av, '--sc-av-clip', clip);
         frameStyle(layer, 'transform', 'none');  // style.css scales the non-Ripple reticle
         frameStyle(layer, 'left', '0px');
