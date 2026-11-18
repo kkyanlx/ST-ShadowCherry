@@ -694,6 +694,10 @@ body.ripplestyle #chat .mesAvatarWrapper > .sc-gear-slot {
 #chat#chat .mes_block:has(.edit_textarea) > .ch_name {
     display: contents;
 }
+/* Ripple's header divider would otherwise become a grid item after the toolbar. */
+body.ripplestyle #chat .mes_block:has(.edit_textarea) > .ch_name::after {
+    content: none;
+}
 #chat#chat .mes_block:has(.edit_textarea) > .mes_reasoning_details {
     grid-area: 2 / 1;
 }
