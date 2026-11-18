@@ -656,14 +656,26 @@ body:not(.ripplestyle) #chat#chat .mes .mesAvatarWrapper > .avatar.sc-av-lifted 
     margin: 6px 3px;
     pointer-events: none;
 }
-/* The mirrored header shares its lower half with the persona name.
-   Align this control with Moonlit’s message number in the upper half. */
-body:is(.echostyle, .tidestyle) #chat .mes[is_user="true"] > .mesAvatarWrapper > .sc-gear-slot {
+/* Echo and Tide position the number above the name on both sides.
+   Flex row reversal already mirrors the horizontal order for the persona. */
+body:is(.echostyle, .tidestyle) #chat .mes > .mesAvatarWrapper > .sc-gear-slot {
     position: relative;
     top: calc(var(--custom-ChatAvatar, 40px) * -.35);
 }
-body.tidestyle #chat .mes[is_user="true"] > .mesAvatarWrapper > .sc-gear-slot {
+body.tidestyle #chat .mes > .mesAvatarWrapper > .sc-gear-slot {
     top: calc(var(--custom-ChatAvatar, 40px) * -.375);
+}
+body.tidestyle.big-avatars #chat .mes > .mesAvatarWrapper > .sc-gear-slot {
+    top: 0;
+}
+
+/* The full-width avatar row sits above the raised message header.
+   Let clicks through its empty space while preserving its own controls. */
+body:is(.whisperstyle, .hushstyle) #chat .mes > .mesAvatarWrapper {
+    pointer-events: none;
+}
+body:is(.whisperstyle, .hushstyle) #chat .mes > .mesAvatarWrapper > :where(.avatar, .mes_timer, .mesIDDisplay, .tokenCounterDisplay) {
+    pointer-events: auto;
 }
 body.ripplestyle #chat .name_text > .sc-gear-slot { margin: 0 3px; }
 #chat .mes > .aa-edit-btn {
