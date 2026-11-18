@@ -195,15 +195,14 @@ const ROW_MAX = 12;       // cameos per sideways row; "frequent" and "all" appea
 const lastSnips = new Map(); // avatar -> last line of their latest chat
 const chatCounts = new Map();   // avatar -> number of chats (lazy, cached)
 const pendingCounts = new Set(); // avatars whose count is being fetched right now
-const snipVersions = new Map();
 const snipChats = new Map();
 const snipRequests = new Map();
 
 function invalidateSnip(avatar) {
     lastSnips.delete(avatar);
     snipChats.delete(avatar);
-    snipVersions.set(avatar, (snipVersions.get(avatar) || 0) + 1);
     snipRequests.get(avatar)?.abort();
+    snipRequests.delete(avatar);
 }
 function captureCurrentSnip() {
     const context = ctx();
@@ -355,7 +354,7 @@ function continueHtml(hidden) {
     const last = lastCharacter();
     if (!last) return '';
     const title = chatTitle(last.chat);
-    const snip = lastSnips.get(last.avatar) || '';
+    const snip = snipChats.get(last.avatar) === stripExt(last.chat) ? lastSnips.get(last.avatar) : '';
     const line = [title.auto ? '' : title.text, snip].filter(Boolean).join(' · ');
     const ago = agoLabel(toMoment(Number(last.date_last_chat)));
     return `
@@ -473,28 +472,26 @@ function lastCharacter() {
 // the continue bar shows a line from the last chat; fetched once per character
 async function loadLastSnip() {
     const c = lastCharacter();
-    if (c && snipChats.has(c.avatar) && snipChats.get(c.avatar) !== stripExt(c.chat)) invalidateSnip(c.avatar);
-    if (!c || lastSnips.has(c.avatar)) return;
-    const version = snipVersions.get(c.avatar) || 0;
+    if (!c) return;
     const file = stripExt(c.chat);
+    if (snipChats.has(c.avatar) && snipChats.get(c.avatar) !== file) invalidateSnip(c.avatar);
+    if (!file || lastSnips.has(c.avatar) || snipRequests.has(c.avatar)) return;
     const controller = new AbortController();
     snipRequests.set(c.avatar, controller);
-    lastSnips.set(c.avatar, '');
     snipChats.set(c.avatar, file);
     try {
         const list = await fetchChats(c.avatar, { signal: controller.signal });
-        if (controller.signal.aborted || (snipVersions.get(c.avatar) || 0) !== version || stripExt(c.chat) !== file) return;
-        if (!list.length) return;
+        if (controller.signal.aborted || stripExt(c.chat) !== file) return;
         chatCounts.set(c.avatar, list.length);
         const want = `${file}.jsonl`;
-        const chat = list.find((x) => x.file_name === want) || list[0];
-        lastSnips.set(c.avatar, cleanSnip(chat?.mes, 120));
+        const chat = list.find((x) => x.file_name === want);
+        if (!chat) return;
+        lastSnips.set(c.avatar, cleanSnip(chat.mes, 120));
         const bar = homeEl?.querySelector('.sc-cont');
         const line = bar?.dataset.continue === c.avatar ? bar.querySelector('.sc-cont-line') : null;
         const title = chatTitle(c.chat);
         if (line && view.mode === 'shelf') line.textContent = [title.auto ? '' : title.text, lastSnips.get(c.avatar)].filter(Boolean).join(' · ');
     } catch {
-        if ((snipVersions.get(c.avatar) || 0) === version) invalidateSnip(c.avatar);
         // The bar still works without a preview; a later visit can retry.
     }
     finally { if (snipRequests.get(c.avatar) === controller) snipRequests.delete(c.avatar); }
@@ -801,7 +798,7 @@ function stopHomeWork({ abort = false } = {}) {
     countQueue.clear();
     if (abort) {
         for (const job of countJobs.values()) job.abort();
-        for (const job of snipRequests.values()) job.abort();
+        for (const avatar of snipRequests.keys()) invalidateSnip(avatar);
     }
 }
 // Let the home paint before measuring tags, reading chat previews or counting
@@ -876,14 +873,7 @@ function pumpCounts() {
         countJobs.set(avatar, controller);
         void (async () => {
             try {
-                const res = await fetch('/api/characters/chats', {
-                    method: 'POST', headers: ctx().getRequestHeaders(),
-                    body: JSON.stringify({ avatar_url: avatar, simple: true }),
-                    signal: controller.signal,
-                });
-                if (!res.ok) throw new Error('chat count failed');
-                const data = await res.json();
-                if (!Array.isArray(data)) throw new Error('invalid chat count');
+                const data = await fetchChats(avatar, { simple: true, signal: controller.signal });
                 if (!controller.signal.aborted) {
                     chatCounts.set(avatar, data.length);
                     const c = characterBy(avatar);
@@ -918,15 +908,19 @@ function loadCounts() {
 }
 
 // a character's chats, newest first
-async function fetchChats(avatar, { signal } = {}) {
+async function fetchChats(avatar, { signal, simple = false } = {}) {
     const res = await fetch('/api/characters/chats', {
         method: 'POST', headers: ctx().getRequestHeaders(),
-        body: JSON.stringify({ avatar_url: avatar }),
+        body: JSON.stringify({ avatar_url: avatar, simple }),
         signal,
     });
     const data = await res.json();
     if (!res.ok || !Array.isArray(data)) throw new Error('could not load chats');
-    const list = Array.isArray(data) ? data.filter((x) => x && x.file_name) : [];
+    if (simple) {
+        if (!data.every((chat) => typeof chat?.file_name === 'string' && chat.file_name)) throw new Error('invalid chat file list');
+        return data;
+    }
+    const list = data.filter((x) => x && x.file_name);
     const time = (x) => toMoment(x.last_mes)?.valueOf() ?? 0;
     return list.sort((a, b) => time(b) - time(a));
 }
@@ -1058,6 +1052,17 @@ function dropFav(avatar, file) {
     favs.splice(i, 1);
     if (!favs.length) delete s.favChats[avatar];
     save();
+}
+
+// CHAT_DELETED gives only the name. Confirm the file is gone for each matching favourite.
+async function verifyDeletedFavourite(file) {
+    for (const [avatar, favourites] of Object.entries(getSettings().favChats)) {
+        if (!Array.isArray(favourites) || !favourites.includes(file)) continue;
+        try {
+            const files = await fetchChats(avatar, { simple: true });
+            if (!files.some((chat) => chat.file_name === file)) dropFav(avatar, file);
+        } catch { /* Keep the favourite if Tavern cannot confirm deletion. */ }
+    }
 }
 
 let renaming = false;     // our own rename is in progress: skip the CHAT_RENAMED echo
@@ -2080,8 +2085,9 @@ function init() {
     new MutationObserver(onGeneratingFlag).observe(document.body, { attributes: true, attributeFilter: ['data-generating'] });
     on(E.CHAT_DELETED, (name) => {
         const a = current();
-        if (a) { chatCounts.delete(a); dropFav(a, `${name}.jsonl`); invalidateSnip(a); }
-        else for (const avatar of lastSnips.keys()) invalidateSnip(avatar);
+        void verifyDeletedFavourite(`${name}.jsonl`);
+        if (a) chatCounts.delete(a);
+        for (const [avatar, file] of snipChats) if (file === name) invalidateSnip(avatar);
         redraw();
     });
     on(E.CHAT_RENAMED, (d) => { if (!renaming && d?.avatarId && !d.groupId) moveFav(d.avatarId, d.oldFileName, d.newFileName); });
