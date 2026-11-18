@@ -625,49 +625,68 @@ body.ripplestyle #chat#chat .mes .mesAvatarWrapper .avatar.sc-av-lifted img {
     mask: none !important;
 }
 
-/* AvatarAdjuster owns this direct child and uses it as the desktop panel anchor.
-   Scope each anchor to its message so two visible portraits never share a gear. */
+/* Keep the picture window round independently of image zoom and the
+   previously selected chat style. The decorative ring is a separate layer. */
+body:not(.ripplestyle) #chat#chat .mes .mesAvatarWrapper > .avatar:not(.sc-av-lifted) > img {
+    border-radius: 50% !important;
+}
+body:not(.ripplestyle) #chat#chat .mes .mesAvatarWrapper > .avatar.sc-av-lifted {
+    -webkit-clip-path: var(--sc-av-clip, inset(0 round 50%));
+    clip-path: var(--sc-av-clip, inset(0 round 50%));
+}
+
+/* The gear remains AA's original child of the message. Its empty layout
+   slot is beside the portrait, or beside the name in Ripple's static header. */
+#chat .sc-gear-slot {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    align-self: center;
+    vertical-align: middle;
+    margin: 6px 3px;
+    pointer-events: none;
+}
+body.ripplestyle #chat .name_text > .sc-gear-slot { margin: 0 3px; }
 #chat .mes > .aa-edit-btn {
     z-index: 8 !important;
+    width: 16px !important;
+    height: 16px !important;
+    font-size: 9px !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
 }
-#chat .mes > .aa-edit-btn::before {
-    inset: 0;
-}
+#chat .mes > .aa-edit-btn i { font-size: inherit !important; }
+#chat .mes > .aa-edit-btn::before { inset: 0; }
 @media (hover: hover) and (pointer: fine) {
-    #chat .mes > .mesAvatarWrapper:has(> .avatar:hover) ~ .aa-edit-btn { opacity: 0.85; }
+    #chat .mes > .mesAvatarWrapper:has(> .avatar:hover) ~ .aa-edit-btn { opacity: .35; }
 }
 @media (hover: none), (pointer: coarse), (max-width: 768px) {
-    #chat .mes > .aa-edit-btn {
-        opacity: .65 !important;
-        color: var(--sc-porcelain, var(--SmartThemeBodyColor));
-        background: rgba(24, 20, 23, .65) !important;
-        width: 28px !important;
-        height: 28px !important;
-    }
-    #chat .mes > .aa-edit-btn:active { opacity: 1 !important; }
+    #chat .mes > .aa-edit-btn { opacity: .15 !important; }
+    #chat .mes > .aa-edit-btn:active { opacity: .7 !important; }
 }
+#chat .sc-gear-slot[hidden],
+body.hideChatAvatars #chat .sc-gear-slot,
+#chat .mes.smallSysMes .sc-gear-slot,
 body.hideChatAvatars #chat .mes > .aa-edit-btn,
 #chat .mes.smallSysMes > .aa-edit-btn,
 #chat .mes:not(:has(> .mesAvatarWrapper > .avatar)) > .aa-edit-btn {
     display: none !important;
 }
 @supports (anchor-scope: --sc-portrait) and (left: anchor(--sc-portrait left)) {
-    #chat .mes:has(> .aa-edit-btn) {
-        anchor-scope: --sc-portrait;
-    }
-    #chat .mes:has(> .aa-edit-btn) > .mesAvatarWrapper > .avatar {
-        anchor-name: --sc-portrait;
-    }
+    #chat .mes:has(> .aa-edit-btn) { anchor-scope: --sc-portrait; }
+    #chat .sc-gear-slot { anchor-name: --sc-portrait; }
     #chat .mes > .aa-edit-btn {
         position-anchor: --sc-portrait;
-        left: calc(anchor(left, -10000px) + 1px) !important;
-        top: calc(anchor(top, -10000px) + 1px) !important;
+        left: anchor(left, -10000px) !important;
+        top: anchor(top, -10000px) !important;
         position-visibility: anchors-visible;
     }
 }
 #chat .mes > .aa-edit-btn.sc-gear-measured {
-    left: calc(var(--sc-gear-x, -10000px) + 1px) !important;
-    top: calc(var(--sc-gear-y, -10000px) + 1px) !important;
+    left: var(--sc-gear-x, -10000px) !important;
+    top: var(--sc-gear-y, -10000px) !important;
 }
 
 /* ── drop cap ──

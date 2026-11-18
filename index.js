@@ -1713,7 +1713,7 @@ function frameStyle(el, name, value) {
 function liftStyleInput(av, img) {
     // Position and transforms can change without triggering ResizeObserver.
     // Only our clipping variables are excluded from the input signature.
-    const style = Array.from(av.style).filter((name) => name !== '--sc-av-r' && name !== '--sc-av-clip')
+    const style = Array.from(av.style).filter((name) => name !== '--sc-av-clip')
         .map((name) => [name, av.style.getPropertyValue(name), av.style.getPropertyPriority(name)]);
     return JSON.stringify([style, img?.style.cssText || '']);
 }
@@ -1731,13 +1731,19 @@ function placeFrames(avatars) {
         const width = av.offsetWidth || 1, height = av.offsetHeight || 1;
         const rect = av.getBoundingClientRect();
         if (!rect.width || !rect.height || getComputedStyle(av).visibility === 'hidden') {
-            hidden.push(layer);
+            hidden.push({ layer, av });
             continue;
         }
         boxes.push({ av, layer, width, height, rect, clip: pictureClip(av) });
     }
-    for (const layer of hidden) frameStyle(layer, 'visibility', 'hidden');
+    for (const { layer, av } of hidden) {
+        frameStyle(layer, 'visibility', 'hidden');
+        const slot = gearSlots.get(av.closest('.mes'));
+        if (slot && !slot.hidden) slot.hidden = true;
+    }
     for (const { av, layer, width, height, clip } of boxes) {
+        const slot = gearSlots.get(av.closest('.mes'));
+        if (slot?.hidden) slot.hidden = false;
         layer.style.removeProperty('visibility');
         if (clip) frameStyle(av, '--sc-av-clip', clip);
         frameStyle(layer, 'transform', 'none');  // style.css scales the non-Ripple reticle
@@ -1768,8 +1774,7 @@ function pictureClip(av) {
     const t = (inBox ? img.offsetTop : img.offsetTop - av.offsetTop) + av.clientTop;
     const r = Math.max(0, av.offsetWidth - l - img.offsetWidth);
     const b = Math.max(0, av.offsetHeight - t - img.offsetHeight);
-    const round = av.style.getPropertyValue('--sc-av-r') || '0px';
-    return `inset(${t}px ${r}px ${b}px ${l}px round ${round})`;
+    return `inset(${t}px ${r}px ${b}px ${l}px round 50%)`;
 }
 // Older engines without scoped CSS anchors use viewport geometry. Only messages
 // near the visible part of the chat take part in a scroll or resize pass.
@@ -1787,11 +1792,13 @@ function initEditGearFallback(chat) {
             const { avatar, button } = entries.get(mes);
             const parent = button.offsetParent;
             if (!parent) continue;
-            const box = avatar.getBoundingClientRect();
+            const slot = gearSlots.get(mes);
+            if (!slot) continue;
+            const box = slot.getBoundingClientRect();
             const origin = parent.getBoundingClientRect();
             const sx = origin.width / parent.offsetWidth;
             const sy = origin.height / parent.offsetHeight;
-            const shown = box.width && box.height && sx > 0 && sy > 0 &&
+            const shown = box.width && box.height && avatar.offsetWidth && sx > 0 && sy > 0 &&
                 getComputedStyle(avatar).visibility === 'visible';
             positions.push([button,
                 shown ? (box.left - origin.left) / sx - parent.clientLeft + parent.scrollLeft : -10000,
@@ -1846,9 +1853,32 @@ function initEditGearFallback(chat) {
 // renderer replaces only that node, let AA's own insertion pass build a fresh
 // button. Keeping the original direct child everywhere else preserves its API.
 const gearPortraits = new WeakMap();
+const gearSlots = new WeakMap();
+function placeGearSlot(mes, avatar) {
+    let slot = gearSlots.get(mes);
+    if (!avatar) {
+        slot?.remove();
+        gearSlots.delete(mes);
+        return;
+    }
+    const ripple = document.body.classList.contains('ripplestyle');
+    const host = ripple ? mes.querySelector('.mes_block .ch_name .name_text') : avatar.parentElement;
+    if (!host) { slot?.remove(); return; }
+    if (!slot) {
+        slot = document.createElement('span');
+        slot.className = 'sc-gear-slot';
+        slot.setAttribute('aria-hidden', 'true');
+        gearSlots.set(mes, slot);
+    }
+    if (slot.parentElement !== host) {
+        if (ripple) host.appendChild(slot);
+        else avatar.after(slot);
+    }
+}
 function syncMessageGear(mes) {
     const button = mes.isConnected && mes.querySelector(':scope > .aa-edit-btn');
     const avatar = button && mes.querySelector(':scope > .mesAvatarWrapper > .avatar');
+    placeGearSlot(mes, avatar);
     if (avatar) {
         const previous = gearPortraits.get(button);
         if (previous && previous !== avatar) {
@@ -1873,9 +1903,7 @@ function releaseLift(av, host = liftInputs.get(av)?.host || av.parentElement) {
     const shared = host?.querySelector(':scope > .sc-av-frame');
     if (!shared) host?.classList.remove('sc-av-host');
     av.classList.remove('sc-av-lifted');
-    av.style.removeProperty('--sc-av-r');
     av.style.removeProperty('--sc-av-clip');
-    delete av.dataset.scAvR;
     liftWatch?.unobserve(av);
     if (host && !shared) liftWatch?.unobserve(host);
     liftInputs.delete(av);
@@ -1894,15 +1922,6 @@ function syncLift(av) {
         && (active ? layer && av.classList.contains('sc-av-lifted') : !layer && !av.classList.contains('sc-av-lifted'))) return false;
     // zoomed (the box is clipped) or just reframed (the picture is resized to the box)
     if (active) {
-        // the picture's own rounding would be zoomed and moved with it and leave a bare
-        // corner in the window; the box takes that rounding over (style.css)
-        if (img && !av.dataset.scAvR) {
-            av.dataset.scAvR = '1';
-            const own = getComputedStyle(av).borderRadius;
-            const pic = getComputedStyle(img).borderRadius;
-            const zero = (v) => !v || /^0(px|%)?( 0(px|%)?)*$/.test(v);
-            av.style.setProperty('--sc-av-r', !zero(pic) ? pic : !zero(own) ? own : '0px');
-        }
         if (!layer) {
             host.classList.add('sc-av-host');
             layer = document.createElement('i');
@@ -1952,6 +1971,9 @@ function onAvatarStyle(records) {
             for (const n of r.removedNodes) for (const av of avatarsWithin(n)) {
                 if (editGearFallback) gearMessages.add(av.closest('.mes'));
                 if (!av.isConnected && liftInputs.has(av)) releaseLift(av);
+            }
+            if (r.removedNodes.length && (r.target.closest('.ch_name') || r.target.classList.contains('mes_block'))) {
+                gearMessages.add(r.target.closest('.mes'));
             }
             // Another renderer may remove just the frame while retaining the avatar.
             if ([...r.removedNodes].some((n) => n.nodeType === 1 && n.classList?.contains('sc-av-frame'))) {
@@ -2020,6 +2042,7 @@ function init() {
             const next = layoutKey();
             if (next === layout) return;
             layout = next;
+            chatEl.querySelectorAll('.mes > .aa-edit-btn').forEach((button) => syncMessageGear(button.parentElement));
             placeAllFrames();
             editGearFallback?.schedule();
         }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
