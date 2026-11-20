@@ -19,6 +19,7 @@ const DEFAULTS = Object.freeze({
     typing: true,          // "is typing": cameo and stars under the last message
     tags: true,            // a row of the characters' tags under the search box
     hint: null,            // text in the empty message box; null = ours, '' = nothing
+    stockPattern: true,    // a character with the stock avatar gets the pattern instead
     quiet: false,          // no moth, no "is typing" and no animations from this extension
     filter: 'recent',      // sort order of the "all" view: recent · frequent · name
 });
@@ -65,7 +66,7 @@ const T = RU ? {
     close: 'Закрыть чат', panelClose: 'Крестик «закрыть чат» на верхней панели',
     panelHome: 'Своя главная (полка)', panelDropCap: 'Буквица в сообщениях персонажа',
     panelTyping: 'Камея «пишет…» под последним сообщением', typing: (n) => `${n} пишет…`,
-    panelQuiet: 'Тихий режим: без мотылька, «пишет...» и анимаций', panelHint: 'Подсказка в поле ввода', hint: 'шепни в туман…', hintEmpty: 'пусто — без подсказки',
+    panelStock: 'Узор вместо стандартной картинки SillyTavern', panelQuiet: 'Тихий режим: без мотылька, «пишет...» и анимаций', panelHint: 'Подсказка в поле ввода', hint: 'шепни в туман…', hintEmpty: 'пусто — без подсказки',
     tagged: 'по тегам', clearTags: 'сбросить ×', tagsLabel: 'теги', panelTags: 'Теги персонажей на полке',
     tagsPrev: 'Прокрутить теги влево', tagsNext: 'Прокрутить теги вправо',
     chatSearch: 'найти в чатах…', searching: 'ищу…', noHits: 'Ничего не нашлось.', moreChats: 'ещё чаты',
@@ -102,7 +103,7 @@ const T = RU ? {
     close: 'Close chat', panelClose: '“Close chat” cross on the top bar',
     panelHome: 'Custom home (shelf)', panelDropCap: 'Drop cap in the character’s messages',
     panelTyping: '“Is typing” cameo under the last message', typing: (n) => `${n} is typing…`,
-    panelQuiet: 'Quiet mode: no moth, "is typing" or animations', panelHint: 'Message box hint', hint: '<3', hintEmpty: 'empty means no hint',
+    panelStock: 'Pattern instead of the stock SillyTavern picture', panelQuiet: 'Quiet mode: no moth, "is typing" or animations', panelHint: 'Message box hint', hint: '<3', hintEmpty: 'empty means no hint',
     tagged: 'by tags', clearTags: 'clear ×', tagsLabel: 'tags', panelTags: 'Character tags on the shelf',
     tagsPrev: 'Scroll tags left', tagsNext: 'Scroll tags right',
     chatSearch: 'search in chats…', searching: 'searching…', noHits: 'Nothing found.', moreChats: 'more chats',
@@ -1267,12 +1268,59 @@ function onImageError(e) {
     const frame = e.target instanceof HTMLImageElement ? e.target.closest('#sc-home .sc-cameo, #sc-typing .sc-cameo') : null;
     if (!frame) return;
     e.target.remove();
+    showInitial(frame);
+}
+function showInitial(frame) {
     if (!frame.dataset.pat) {
         const h = patternHash(frame.dataset.name || frame.dataset.ini);
         frame.dataset.pat = String(h % 4);
         frame.style.setProperty('--sc-pa', `${(h >>> 3) % 360}deg`);
     }
-    frame.insertAdjacentHTML('beforeend', `<span class="sc-ini">${esc(frame.dataset.ini)}</span>`);
+    if (!frame.querySelector('.sc-ini')) frame.insertAdjacentHTML('beforeend', `<span class="sc-ini">${esc(frame.dataset.ini)}</span>`);
+}
+
+// SillyTavern gives a character created without a picture its stock avatar (img/ai4.png).
+// To the browser that is a normal picture, so it is recognised by looking: both images are
+// shrunk to a tiny grayscale grid and compared. Shown as the pattern instead, if enabled.
+const STOCK_SIZE = [12, 18];
+let stockPrint = null;                                   // Promise of the stock avatar's grid
+const thumbVerdict = new Map();                          // thumbnail src -> true when it is the stock avatar
+function grayGrid(img) {
+    const [w, h] = STOCK_SIZE;
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const g = canvas.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0, w, h);
+    const px = g.getImageData(0, 0, w, h).data;
+    const out = [];
+    for (let i = 0; i < px.length; i += 4) out.push(px[i] * .3 + px[i + 1] * .59 + px[i + 2] * .11);
+    return out;
+}
+function stockGrid() {
+    stockPrint ||= new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => { try { resolve(grayGrid(img)); } catch { resolve(null); } };
+        img.onerror = () => resolve(null);
+        img.src = '/img/ai4.png';
+    });
+    return stockPrint;
+}
+async function checkStock(img) {
+    const frame = img.closest('#sc-home .sc-cameo, #sc-typing .sc-cameo');
+    if (!frame || !getSettings().stockPattern || !img.naturalWidth) return;
+    const src = img.currentSrc || img.src;
+    let isStock = thumbVerdict.get(src);
+    if (isStock === undefined) {
+        try {
+            const stock = await stockGrid();
+            if (!stock) return;
+            const mine = grayGrid(img);
+            const diff = mine.reduce((sum, v, i) => sum + Math.abs(v - stock[i]), 0) / mine.length;
+            isStock = diff < 10;
+            thumbVerdict.set(src, isStock);
+        } catch { return; }       // a canvas that cannot be read: keep the picture
+    }
+    if (isStock && img.isConnected && frame.contains(img)) { img.remove(); showInitial(frame); }
 }
 
 /* ── pins, archive and favourites follow the character ── */
@@ -1642,6 +1690,10 @@ function buildPanel() {
                         <input id="sc-tags-on" type="checkbox">
                         <span>${T.panelTags}</span>
                     </label>
+                    <label class="checkbox_label" for="sc-stock-on">
+                        <input id="sc-stock-on" type="checkbox">
+                        <span>${T.panelStock}</span>
+                    </label>
                     <label class="checkbox_label" for="sc-quiet-on">
                         <input id="sc-quiet-on" type="checkbox">
                         <span>${T.panelQuiet}</span>
@@ -1669,6 +1721,9 @@ function buildPanel() {
     const tagsBox = document.getElementById('sc-tags-on');
     tagsBox.checked = !!s.tags;
     tagsBox.addEventListener('change', () => { s.tags = tagsBox.checked; save(); if (!s.tags) view.tags = []; render(); });
+    const stockBox = document.getElementById('sc-stock-on');
+    stockBox.checked = !!s.stockPattern;
+    stockBox.addEventListener('change', () => { s.stockPattern = stockBox.checked; save(); render(); });
     const quietBox = document.getElementById('sc-quiet-on');
     quietBox.checked = !!s.quiet;
     quietBox.addEventListener('change', () => { s.quiet = quietBox.checked; save(); applyQuiet(); });
@@ -1721,19 +1776,6 @@ const liftWatch = typeof ResizeObserver === 'function'
         if (av) queueLift(av);
     }))
     : null;
-// Avatars far outside the screen are not re-measured; they are marked and caught up
-// when they come into view. Without IntersectionObserver everything is handled as before.
-const liftOff = new WeakSet();           // lifted avatars currently far off screen
-const liftDirty = new Set();             // off-screen avatars that changed meanwhile
-const liftSeen = typeof IntersectionObserver === 'function'
-    ? new IntersectionObserver((list) => list.forEach((e) => {
-        const av = e.target;
-        if (e.isIntersecting) {
-            liftOff.delete(av);
-            if (liftDirty.delete(av) && av.isConnected) queueLift(av, true);
-        } else liftOff.add(av);
-    }), { rootMargin: '600px 0px' })
-    : null;
 const liftQueue = new Map();             // avatar -> 1: input styles changed, 2: size/position changed
 const liftInputs = new WeakMap();        // ignore our own --sc-av-* style mutations
 const liftAfter = new Map();             // one shared timer for the end of slide-in animations
@@ -1751,7 +1793,6 @@ function flushLifts() {
     const place = [];
     for (const [av, flags] of jobs) {
         if (!av.isConnected) { releaseLift(av); continue; }
-        if (liftOff.has(av)) { liftDirty.add(av); continue; }
         const changed = flags & 1 ? syncLift(av) : false;
         if (changed || (flags & 2)) place.push(av);
     }
@@ -1971,8 +2012,6 @@ function releaseLift(av, host = liftInputs.get(av)?.host || av.parentElement) {
     av.classList.remove('sc-av-lifted');
     av.style.removeProperty('--sc-av-clip');
     liftWatch?.unobserve(av);
-    liftSeen?.unobserve(av);
-    liftOff.delete(av); liftDirty.delete(av);
     if (host && !shared) liftWatch?.unobserve(host);
     liftInputs.delete(av);
 }
@@ -2003,7 +2042,6 @@ function syncLift(av) {
             }
             liftWatch?.observe(av);
             liftWatch?.observe(host);
-            liftSeen?.observe(av);
         }
         if (!av.classList.contains('sc-av-lifted')) av.classList.add('sc-av-lifted');
         liftInputs.set(av, { host, img, input, layer });
@@ -2059,6 +2097,7 @@ function onAvatarStyle(records) {
     for (const mes of gearMessages) if (mes) syncMessageGear(mes);
 }
 function onAvatarLoad(e) {
+    if (e.target.tagName === 'IMG' && e.target.closest('#sc-home .sc-cameo, #sc-typing .sc-cameo')) { checkStock(e.target); return; }
     const av = e.target.tagName === 'IMG' ? e.target.parentElement : null;
     if (av?.classList.contains('avatar')) queueLift(av);
 }
