@@ -1070,11 +1070,13 @@ async function renameChat(avatar, file) {
     if (!characterBy(avatar)) return;
     const before = new Set((view.chats || []).map((x) => x.file_name));
     const oldName = stripExt(file);
-    const { callGenericPopup, POPUP_TYPE } = ctx();
-    const typed = await callGenericPopup(`<h3>${esc(T.renamePrompt)}</h3>`, POPUP_TYPE.INPUT, oldName);
-    const newName = typeof typed === 'string' ? typed.trim() : '';
-    if (!newName || newName === oldName) return;
+    // the popup is inside the try as well: these run from a click without an await,
+    // so a failure there would otherwise end as a silent unhandled rejection
     try {
+        const { callGenericPopup, POPUP_TYPE } = ctx();
+        const typed = await callGenericPopup(`<h3>${esc(T.renamePrompt)}</h3>`, POPUP_TYPE.INPUT, oldName);
+        const newName = typeof typed === 'string' ? typed.trim() : '';
+        if (!newName || newName === oldName) return;
         const m = await st();
         const id = characterIndex(avatar);
         if (id < 0) return;
@@ -1104,10 +1106,10 @@ async function renameChat(avatar, file) {
 
 async function deleteChat(avatar, file) {
     if (!characterBy(avatar)) return;
-    const { callGenericPopup, POPUP_TYPE } = ctx();
-    const ok = await callGenericPopup(esc(T.deleteConfirm), POPUP_TYPE.CONFIRM);
-    if (!ok) return;
     try {
+        const { callGenericPopup, POPUP_TYPE } = ctx();
+        const ok = await callGenericPopup(esc(T.deleteConfirm), POPUP_TYPE.CONFIRM);
+        if (!ok) return;
         const m = await st();
         const id = characterIndex(avatar);
         if (id < 0) return;
@@ -1329,7 +1331,7 @@ function tarotFront(c, n) {
     const full = c.avatar && c.avatar !== 'none' ? `/characters/${encodeURIComponent(c.avatar)}` : '';
     const thumb = full ? ctx().getThumbnailUrl('avatar', c.avatar) : '';
     return `<span class="sc-t-num">${NUMERALS[n]}</span>
-        <span class="sc-t-win">${full ? `<img src="${esc(full)}" data-thumb="${esc(thumb)}" alt="">` : `<span class="sc-ini">${esc((c.name || '?').trim().charAt(0).toUpperCase())}</span>`}</span>
+        <span class="sc-t-win">${full ? `<img src="${esc(thumb || full)}" data-full="${thumb ? esc(full) : ''}" decoding="async" alt="">` : `<span class="sc-ini">${esc((c.name || '?').trim().charAt(0).toUpperCase())}</span>`}</span>
         <span class="sc-t-name">${esc(c.name)}</span>
         <span class="sc-t-arc">${esc(arc)}</span>`;
 }
@@ -1342,9 +1344,10 @@ function dealTarot() {
     tarotPick = c.avatar; tarotLast = c.avatar;
     tarotEl.querySelector('.sc-t-front').innerHTML = tarotFront(c, n);
     const img = tarotEl.querySelector('.sc-t-win img');
-    // the full picture first, then the thumbnail, then the initial
+    // SillyTavern's small thumbnail first (the card is at most ~230px wide, so the
+    // full-size upload is wasted bytes), then the full picture, then the initial
     img?.addEventListener('error', () => {
-        if (img.dataset.thumb) { img.src = img.dataset.thumb; img.dataset.thumb = ''; return; }
+        if (img.dataset.full) { img.src = img.dataset.full; img.dataset.full = ''; return; }
         img.insertAdjacentHTML('afterend', `<span class="sc-ini">${esc((c.name || '?').trim().charAt(0).toUpperCase())}</span>`);
         img.remove();
     });
@@ -1929,16 +1932,30 @@ function releaseLift(av, host = liftInputs.get(av)?.host || av.parentElement) {
     if (host && !shared) liftWatch?.unobserve(host);
     liftInputs.delete(av);
 }
+// AvatarAdjuster sets no class or attribute of its own: it writes inline styles on
+// every avatar it knows, even one left at its defaults (width/height 100%,
+// object-fit: cover, object-position 50% 50%). A real adjustment shows as an inline
+// overflow: hidden on the box (zoom or rotation), a transform on the picture
+// (zoom, rotation, shift) or a moved object-position (shift at 100% zoom).
+// Outside Ripple a default-only picture looks exactly as style.css draws it, so no
+// layer is needed. Ripple still needs one: AA's inline width beats the preset's
+// 78.95% picture window, and the layer's grid restores it.
+function adjustedByOther(av, img) {
+    if (av.style.getPropertyValue('overflow') === 'hidden') return true;
+    if (img.style.getPropertyValue('transform')) return true;
+    const position = img.style.getPropertyValue('object-position').trim();
+    if (position && position !== '50% 50%' && position !== 'center center' && position !== 'center') return true;
+    return !!img.style.getPropertyValue('width') && document.body.classList.contains('ripplestyle');
+}
 function syncLift(av) {
     const host = av.parentElement;
     if (!host) return false;
     const img = av.querySelector(':scope > img');
-    const overflow = av.style.getPropertyValue('overflow');
     const input = liftStyleInput(av, img);
     const prev = liftInputs.get(av);
     if (prev && (prev.host !== host || prev.img !== img)) releaseLift(av, prev.host);
     let layer = prev?.host === host && prev.img === img && prev.layer?.parentElement === host ? prev.layer : null;
-    const active = !!img && (overflow === 'hidden' || !!img.style.getPropertyValue('width'));
+    const active = !!img && adjustedByOther(av, img);
     if (prev?.host === host && prev.img === img && prev.input === input
         && (active ? layer && av.classList.contains('sc-av-lifted') : !layer && !av.classList.contains('sc-av-lifted'))) return false;
     // zoomed (the box is clipped) or just reframed (the picture is resized to the box)
@@ -2063,6 +2080,8 @@ function init() {
             if (next === layout) return;
             layout = next;
             chatEl.querySelectorAll('.mes > .aa-edit-btn').forEach((button) => syncMessageGear(button.parentElement));
+            // whether an avatar needs its layer depends on Ripple (see adjustedByOther)
+            chatEl.querySelectorAll('.mes .avatar').forEach((av) => queueLift(av, true));
             placeAllFrames();
             editGearFallback?.schedule();
         }).observe(document.body, { attributes: true, attributeFilter: ['class'] });

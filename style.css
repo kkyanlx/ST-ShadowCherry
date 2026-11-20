@@ -104,9 +104,13 @@
 #sc-home .sc-tools { display: flex; gap: 8px; align-items: stretch; width: 100%; }
 #sc-home .sc-search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--h-soft); color: var(--h-faded); }
 #sc-home .sc-search input {
-    flex: 1; width: 100%; min-width: 0; padding: 7px 0; border: 0; outline: 0; background: none;
+    flex: 1; width: 100%; min-width: 0; padding: 7px 0; border: 0; background: none;
     color: var(--h-bone); font: italic .95rem var(--h-text);
 }
+/* keyboard focus stays visible: the ring is drawn on the whole search box, so it
+   lines up with the box's border instead of hugging the bare input inside it */
+#sc-home .sc-search:focus-within { border-color: var(--h-dusty); outline: 2px solid var(--h-porc); outline-offset: 2px; }
+#sc-home .sc-search input:focus-visible { outline: none; }
 #sc-home .sc-search input::placeholder { color: var(--h-faded); opacity: 1; }
 /* the browser's own "clear" cross is blue in some of them: draw ours */
 #sc-home .sc-search input::-webkit-search-cancel-button {
@@ -792,39 +796,44 @@ body.hideChatAvatars #chat .mes > .aa-edit-btn,
    font's capital height (Italiana .70, Cormorant .636), measured from the font files. */
 @property --sc-cap-L { syntax: "<length>"; inherits: true; initial-value: 0px; }
 @property --sc-cap-E { syntax: "<length>"; inherits: true; initial-value: 0px; }
-body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty)))::first-letter {
-    font-family: var(--sc-name, "Italiana", "Cormorant Garamond", Georgia, serif) !important;
-    font-style: normal !important;
-    font-weight: 400 !important;
-    color: var(--sc-porcelain, var(--SmartThemeQuoteColor, #f9dcec));
-    text-shadow: 0 0 12px rgba(249, 220, 236, .35);
-}
-/* Italiana has no Cyrillic: a message that starts with a Russian (or other non-Latin)
-   letter is marked by index.js and gets a cap font that has that letter */
-body.sc-dropcap #chat .mes[data-sc-cap="alt"][is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty)))::first-letter {
-    font-family: var(--sc-cap-alt, "Cormorant Garamond", Georgia, serif) !important;
-    font-weight: 500 !important;
-}
-@supports (height: 1lh) {
-    body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty))) {
-        --sc-cap-L: 1lh;
-        --sc-cap-E: 1em;
-        --sc-cap-k: .7;
+/* One selector for the first paragraph, written once: every rule below is nested in it.
+   [data-sc-cap="alt"] & = the same paragraph inside a message index.js marked "alt"
+   (index.js only sets that attribute on .mes), with the same specificity as before. */
+body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty))) {
+    &::first-letter {
+        font-family: var(--sc-name, "Italiana", "Cormorant Garamond", Georgia, serif) !important;
+        font-style: normal !important;
+        font-weight: 400 !important;
+        color: var(--sc-porcelain, var(--SmartThemeQuoteColor, #f9dcec));
+        text-shadow: 0 0 12px rgba(249, 220, 236, .35);
     }
-    body.sc-dropcap #chat .mes[data-sc-cap="alt"][is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty))) {
-        --sc-cap-k: .636;
+    /* Italiana has no Cyrillic: a message that starts with a Russian (or other non-Latin)
+       letter is marked by index.js and gets a cap font that has that letter */
+    [data-sc-cap="alt"] &::first-letter {
+        font-family: var(--sc-cap-alt, "Cormorant Garamond", Georgia, serif) !important;
+        font-weight: 500 !important;
     }
-    body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty)))::first-letter {
-        float: left;
-        font-size: calc((var(--sc-cap-L) + .66 * var(--sc-cap-E)) / var(--sc-cap-k));
-        line-height: var(--sc-cap-k);
-        margin: calc(var(--sc-cap-L) / 2 - .36 * var(--sc-cap-E)) .08em 0 0;
-        padding: 0;
-        -webkit-initial-letter: normal;
-        initial-letter: normal;
+    @supports (height: 1lh) {
+        & {
+            --sc-cap-L: 1lh;
+            --sc-cap-E: 1em;
+            --sc-cap-k: .7;
+        }
+        [data-sc-cap="alt"] & {
+            --sc-cap-k: .636;
+        }
+        &::first-letter {
+            float: left;
+            font-size: calc((var(--sc-cap-L) + .66 * var(--sc-cap-E)) / var(--sc-cap-k));
+            line-height: var(--sc-cap-k);
+            margin: calc(var(--sc-cap-L) / 2 - .36 * var(--sc-cap-E)) .08em 0 0;
+            padding: 0;
+            -webkit-initial-letter: normal;
+            initial-letter: normal;
+        }
+        /* Cormorant's capitals carry wider side space of their own */
+        [data-sc-cap="alt"] &::first-letter { margin-right: 0; }
     }
-    /* Cormorant's capitals carry wider side space of their own */
-    body.sc-dropcap #chat .mes[data-sc-cap="alt"][is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty)))::first-letter { margin-right: 0; }
 }
 /* very old browsers: just a larger first letter, nothing floats */
 @supports not (height: 1lh) {
@@ -840,6 +849,5 @@ body.sc-dropcap #chat .mes[data-sc-cap="alt"][is_user="false"]:not([is_system="t
     --scx-moth-left: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M11.3 9.2C8.6 5.8 4.6 3.8 2.6 4.2C3 8.4 6.6 11.4 11.3 11.8%22/%3E%3Cpath d=%22M11.3 12.6C8.2 12.8 6.4 15.2 7.2 17.8L4.6 21.8L9.2 18.6C10.6 17.4 11.2 15.6 11.3 13.8%22/%3E%3C/svg%3E");
     --scx-moth-right: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cg transform=%22translate%2824 0%29 scale%28-1 1%29%22%3E%3Cpath d=%22M11.3 9.2C8.6 5.8 4.6 3.8 2.6 4.2C3 8.4 6.6 11.4 11.3 11.8%22/%3E%3Cpath d=%22M11.3 12.6C8.2 12.8 6.4 15.2 7.2 17.8L4.6 21.8L9.2 18.6C10.6 17.4 11.2 15.6 11.3 13.8%22/%3E%3C/g%3E%3C/svg%3E");
     --scx-moth-wings: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M11.3 9.2C8.6 5.8 4.6 3.8 2.6 4.2C3 8.4 6.6 11.4 11.3 11.8%22/%3E%3Cpath d=%22M11.3 12.6C8.2 12.8 6.4 15.2 7.2 17.8L4.6 21.8L9.2 18.6C10.6 17.4 11.2 15.6 11.3 13.8%22/%3E%3Cg transform=%22translate%2824 0%29 scale%28-1 1%29%22%3E%3Cpath d=%22M11.3 9.2C8.6 5.8 4.6 3.8 2.6 4.2C3 8.4 6.6 11.4 11.3 11.8%22/%3E%3Cpath d=%22M11.3 12.6C8.2 12.8 6.4 15.2 7.2 17.8L4.6 21.8L9.2 18.6C10.6 17.4 11.2 15.6 11.3 13.8%22/%3E%3C/g%3E%3C/svg%3E");
-    --scx-moth: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M12 7.8V17%22/%3E%3Cpath d=%22M11.3 9.2C8.6 5.8 4.6 3.8 2.6 4.2C3 8.4 6.6 11.4 11.3 11.8%22/%3E%3Cpath d=%22M11.3 12.6C8.2 12.8 6.4 15.2 7.2 17.8L4.6 21.8L9.2 18.6C10.6 17.4 11.2 15.6 11.3 13.8%22/%3E%3Cpath d=%22M11.5 8C11 6 10 4.6 8.8 4%22/%3E%3Cg transform=%22translate%2824 0%29 scale%28-1 1%29%22%3E%3Cpath d=%22M11.3 9.2C8.6 5.8 4.6 3.8 2.6 4.2C3 8.4 6.6 11.4 11.3 11.8%22/%3E%3Cpath d=%22M11.3 12.6C8.2 12.8 6.4 15.2 7.2 17.8L4.6 21.8L9.2 18.6C10.6 17.4 11.2 15.6 11.3 13.8%22/%3E%3Cpath d=%22M11.5 8C11 6 10 4.6 8.8 4%22/%3E%3C/g%3E%3C/svg%3E");
 }
 /* @end-moth-assets */
