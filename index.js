@@ -19,8 +19,6 @@ const DEFAULTS = Object.freeze({
     typing: true,          // "is typing": cameo and stars under the last message
     tags: true,            // a row of the characters' tags under the search box
     hint: null,            // text in the empty message box; null = ours, '' = nothing
-    stockPattern: true,    // a character with the stock avatar gets the pattern instead
-    quiet: false,          // no moth, no "is typing" and no animations from this extension
     filter: 'recent',      // sort order of the "all" view: recent · frequent · name
 });
 
@@ -66,7 +64,7 @@ const T = RU ? {
     close: 'Закрыть чат', panelClose: 'Крестик «закрыть чат» на верхней панели',
     panelHome: 'Своя главная (полка)', panelDropCap: 'Буквица в сообщениях персонажа',
     panelTyping: 'Камея «пишет…» под последним сообщением', typing: (n) => `${n} пишет…`,
-    panelStock: 'Узор вместо стандартной картинки SillyTavern', panelQuiet: 'Тихий режим: без мотылька, «пишет...» и анимаций', panelHint: 'Подсказка в поле ввода', hint: 'шепни в туман…', hintEmpty: 'пусто — без подсказки',
+    panelHint: 'Подсказка в поле ввода', hint: 'шепни в туман…', hintEmpty: 'пусто — без подсказки',
     tagged: 'по тегам', clearTags: 'сбросить ×', tagsLabel: 'теги', panelTags: 'Теги персонажей на полке',
     tagsPrev: 'Прокрутить теги влево', tagsNext: 'Прокрутить теги вправо',
     chatSearch: 'найти в чатах…', searching: 'ищу…', noHits: 'Ничего не нашлось.', moreChats: 'ещё чаты',
@@ -103,7 +101,7 @@ const T = RU ? {
     close: 'Close chat', panelClose: '“Close chat” cross on the top bar',
     panelHome: 'Custom home (shelf)', panelDropCap: 'Drop cap in the character’s messages',
     panelTyping: '“Is typing” cameo under the last message', typing: (n) => `${n} is typing…`,
-    panelStock: 'Pattern instead of the stock SillyTavern picture', panelQuiet: 'Quiet mode: no moth, "is typing" or animations', panelHint: 'Message box hint', hint: '<3', hintEmpty: 'empty means no hint',
+    panelHint: 'Message box hint', hint: '<3', hintEmpty: 'empty means no hint',
     tagged: 'by tags', clearTags: 'clear ×', tagsLabel: 'tags', panelTags: 'Character tags on the shelf',
     tagsPrev: 'Scroll tags left', tagsNext: 'Scroll tags right',
     chatSearch: 'search in chats…', searching: 'searching…', noHits: 'Nothing found.', moreChats: 'more chats',
@@ -320,23 +318,11 @@ function scrollTags(direction) {
 }
 
 /* ── markup pieces ────────────────────────────────────── */
-// A character without a picture gets a quiet pattern from its name, so the same name
-// always looks the same. style.css draws four variants in the theme's own colours.
-function patternHash(name) {
-    let h = 2166136261;
-    for (const ch of String(name || '?')) h = Math.imul(h ^ ch.codePointAt(0), 16777619);
-    return h >>> 0;
-}
-function patternAttrs(name) {
-    const h = patternHash(name);
-    return ` data-pat="${h % 4}" style="--sc-pa:${(h >>> 3) % 360}deg"`;
-}
-
 function cameo(c, cls = '') {
     const hasImg = c.avatar && c.avatar !== 'none';
     const src = hasImg ? ctx().getThumbnailUrl('avatar', c.avatar) : '';
     const initial = esc((c.name || '?').trim().charAt(0).toUpperCase());
-    return `<span class="sc-cameo ${cls}" data-ini="${initial}" data-name="${esc(c.name || '')}"${hasImg ? '' : patternAttrs(c.name)}>${hasImg ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async">` : `<span class="sc-ini">${initial}</span>`}</span>`;
+    return `<span class="sc-cameo ${cls}" data-ini="${initial}">${hasImg ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async">` : `<span class="sc-ini">${initial}</span>`}</span>`;
 }
 
 // under a cameo: day of the last chat and how many chats there are
@@ -1268,59 +1254,7 @@ function onImageError(e) {
     const frame = e.target instanceof HTMLImageElement ? e.target.closest('#sc-home .sc-cameo, #sc-typing .sc-cameo') : null;
     if (!frame) return;
     e.target.remove();
-    showInitial(frame);
-}
-function showInitial(frame) {
-    if (!frame.dataset.pat) {
-        const h = patternHash(frame.dataset.name || frame.dataset.ini);
-        frame.dataset.pat = String(h % 4);
-        frame.style.setProperty('--sc-pa', `${(h >>> 3) % 360}deg`);
-    }
-    if (!frame.querySelector('.sc-ini')) frame.insertAdjacentHTML('beforeend', `<span class="sc-ini">${esc(frame.dataset.ini)}</span>`);
-}
-
-// SillyTavern gives a character created without a picture its stock avatar (img/ai4.png).
-// To the browser that is a normal picture, so it is recognised by looking: both images are
-// shrunk to a tiny grayscale grid and compared. Shown as the pattern instead, if enabled.
-const STOCK_SIZE = [12, 18];
-let stockPrint = null;                                   // Promise of the stock avatar's grid
-const thumbVerdict = new Map();                          // thumbnail src -> true when it is the stock avatar
-function grayGrid(img) {
-    const [w, h] = STOCK_SIZE;
-    const canvas = document.createElement('canvas');
-    canvas.width = w; canvas.height = h;
-    const g = canvas.getContext('2d', { willReadFrequently: true });
-    g.drawImage(img, 0, 0, w, h);
-    const px = g.getImageData(0, 0, w, h).data;
-    const out = [];
-    for (let i = 0; i < px.length; i += 4) out.push(px[i] * .3 + px[i + 1] * .59 + px[i + 2] * .11);
-    return out;
-}
-function stockGrid() {
-    stockPrint ||= new Promise((resolve) => {
-        const img = new Image();
-        img.onload = () => { try { resolve(grayGrid(img)); } catch { resolve(null); } };
-        img.onerror = () => resolve(null);
-        img.src = '/img/ai4.png';
-    });
-    return stockPrint;
-}
-async function checkStock(img) {
-    const frame = img.closest('#sc-home .sc-cameo, #sc-typing .sc-cameo');
-    if (!frame || !getSettings().stockPattern || !img.naturalWidth) return;
-    const src = img.currentSrc || img.src;
-    let isStock = thumbVerdict.get(src);
-    if (isStock === undefined) {
-        try {
-            const stock = await stockGrid();
-            if (!stock) return;
-            const mine = grayGrid(img);
-            const diff = mine.reduce((sum, v, i) => sum + Math.abs(v - stock[i]), 0) / mine.length;
-            isStock = diff < 10;
-            thumbVerdict.set(src, isStock);
-        } catch { return; }       // a canvas that cannot be read: keep the picture
-    }
-    if (isStock && img.isConnected && frame.contains(img)) { img.remove(); showInitial(frame); }
+    frame.insertAdjacentHTML('beforeend', `<span class="sc-ini">${esc(frame.dataset.ini)}</span>`);
 }
 
 /* ── pins, archive and favourites follow the character ── */
@@ -1505,7 +1439,7 @@ function closeTarot() {
 // (the thinking included), the stop button is a moth that slowly flaps its wings.
 // The flag lives on <body>; the drawing is in style.css.
 function waiting(on) {
-    if (on && !getSettings().quiet) document.body.dataset.scWait = '1';
+    if (on) document.body.dataset.scWait = '1';
     else delete document.body.dataset.scWait;
 }
 
@@ -1526,7 +1460,7 @@ function typingCharacter(opts) {
 
 function showTyping(opts) {
     hideTyping();
-    if (!getSettings().typing || getSettings().quiet) return;
+    if (!getSettings().typing) return;
     const chatEl = document.getElementById('chat');
     const c = typingCharacter(opts);
     if (!chatEl || !c || homeEl?.isConnected) return;
@@ -1690,14 +1624,6 @@ function buildPanel() {
                         <input id="sc-tags-on" type="checkbox">
                         <span>${T.panelTags}</span>
                     </label>
-                    <label class="checkbox_label" for="sc-stock-on">
-                        <input id="sc-stock-on" type="checkbox">
-                        <span>${T.panelStock}</span>
-                    </label>
-                    <label class="checkbox_label" for="sc-quiet-on">
-                        <input id="sc-quiet-on" type="checkbox">
-                        <span>${T.panelQuiet}</span>
-                    </label>
                     <label class="sc-field" for="sc-hint">
                         <span>${T.panelHint}</span>
                         <input id="sc-hint" class="text_pole" type="text" placeholder="${T.hintEmpty}" autocomplete="off">
@@ -1721,21 +1647,9 @@ function buildPanel() {
     const tagsBox = document.getElementById('sc-tags-on');
     tagsBox.checked = !!s.tags;
     tagsBox.addEventListener('change', () => { s.tags = tagsBox.checked; save(); if (!s.tags) view.tags = []; render(); });
-    const stockBox = document.getElementById('sc-stock-on');
-    stockBox.checked = !!s.stockPattern;
-    stockBox.addEventListener('change', () => { s.stockPattern = stockBox.checked; save(); render(); });
-    const quietBox = document.getElementById('sc-quiet-on');
-    quietBox.checked = !!s.quiet;
-    quietBox.addEventListener('change', () => { s.quiet = quietBox.checked; save(); applyQuiet(); });
     const hintBox = document.getElementById('sc-hint');
     hintBox.value = typeof s.hint === 'string' ? s.hint : T.hint;
     hintBox.addEventListener('input', () => { s.hint = hintBox.value; save(); applyHint(); });
-}
-
-function applyQuiet() {
-    const on = !!getSettings().quiet;
-    document.body.classList.toggle('sc-quiet', on);
-    if (on) { waiting(false); hideTyping(); }
 }
 
 // the drop cap is drawn by style.css; this switches it on and off
@@ -2097,7 +2011,6 @@ function onAvatarStyle(records) {
     for (const mes of gearMessages) if (mes) syncMessageGear(mes);
 }
 function onAvatarLoad(e) {
-    if (e.target.tagName === 'IMG' && e.target.closest('#sc-home .sc-cameo, #sc-typing .sc-cameo')) { checkStock(e.target); return; }
     const av = e.target.tagName === 'IMG' ? e.target.parentElement : null;
     if (av?.classList.contains('avatar')) queueLift(av);
 }
@@ -2131,7 +2044,6 @@ function init() {
     getSettings();
     buildPanel();
     applyDropCap();
-    applyQuiet();
     applyHint();
 
     const chatEl = document.getElementById('chat');
