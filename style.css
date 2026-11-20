@@ -1,0 +1,860 @@
+/*  ✦ Shadow Cherry — home (rows of cameos, character page, search in chats),
+    the tarot draw, the waiting moth, the loading screen, the drop cap, the
+    close-chat cross and the settings panel. Colours and fonts come from the theme
+    (--sc-* in the Moonlit preset); every value has a fallback, so it also works
+    under other themes. */
+
+/* Fonts are loaded without blocking extension activation by index.js. */
+
+#sc-home,
+#sc-tarot,
+#loader {
+    --h-ink: var(--sc-black, #161616);
+    --h-mauve: var(--sc-mauve, #ac9e9b);
+    --h-bone: var(--sc-bone, var(--SmartThemeBodyColor, #e7e3e0));
+    --h-porc: var(--sc-porcelain, var(--SmartThemeQuoteColor, #f9dcec));
+    --h-dusty: var(--sc-dusty, #c7b3be);
+    --h-faded: var(--sc-faded, #9c8a95);
+    --h-line: var(--sc-line, rgba(199, 179, 190, .5));
+    --h-soft: rgba(199, 179, 190, .22);
+    --h-glow: var(--sc-glow, rgba(249, 220, 236, .35));
+    --h-name: var(--sc-name, "Italiana", "Cormorant Garamond", Georgia, serif);
+    --h-text: var(--sc-text, "Spectral", Georgia, serif);
+    --h-meta: var(--sc-meta, "Special Elite", "Courier New", monospace);
+    --h-corner: linear-gradient(var(--h-line), var(--h-line));
+}
+#sc-home {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    /* #chat is a flex column: give the home an explicit width so long text
+       (a chat name, a last line) can never push it wider than the screen */
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 480px;
+    align-self: center;
+    margin: 0 auto;
+    padding: 16px 4px 28px;
+    color: var(--h-bone);
+    font-family: var(--h-text);
+}
+/* while the home is up, hide SillyTavern's own welcome panel and greeting messages */
+#chat:has(> #sc-home) > :not(#sc-home) { display: none !important; }
+
+#sc-home > *,
+#sc-home .sc-body > * { flex: none; min-width: 0; max-width: 100%; }
+/* the rows under the search box: redrawn on their own while typing */
+#sc-home .sc-body { display: flex; flex-direction: column; gap: 14px; }
+#sc-home [hidden] { display: none !important; }
+#sc-home button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: inherit; -webkit-tap-highlight-color: transparent; }
+#sc-home button:focus-visible,
+#sc-home input:focus-visible { outline: 2px solid var(--h-porc); outline-offset: 2px; }
+
+#sc-home .sc-hud {
+    background-image: var(--h-corner), var(--h-corner), var(--h-corner), var(--h-corner),
+                      var(--h-corner), var(--h-corner), var(--h-corner), var(--h-corner);
+    background-size: 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px, 12px 1px, 1px 12px;
+    background-position: top left, top left, top right, top right, bottom left, bottom left, bottom right, bottom right;
+    background-repeat: no-repeat;
+}
+#sc-home .sc-meta { font: .72rem var(--h-meta); letter-spacing: .05em; color: var(--h-faded); }
+#sc-home .sc-nm { font-family: var(--h-name); color: var(--h-dusty); line-height: 1.05; }
+
+/* cameo */
+#sc-home .sc-cameo {
+    position: relative;
+    flex: none;
+    display: grid;
+    place-items: center;
+    overflow: hidden;
+    border-radius: 50%;
+    background: radial-gradient(circle at 50% 35%, #4a4246, #1d1b1a);
+    box-shadow: 0 0 0 1px var(--h-dusty), 0 0 0 4px rgba(22, 22, 22, .9), 0 0 0 5px var(--h-soft);
+}
+#sc-home .sc-cameo img { width: 100%; height: 100%; object-fit: cover; object-position: center 25%; display: block; }
+#sc-home .sc-ini { font: 1.7em var(--h-name); color: var(--h-porc); }
+#sc-home .sc-cameo-cont { width: 40px; height: 50px; box-shadow: 0 0 0 1px var(--h-porc), 0 0 0 3px rgba(22, 22, 22, .9), 0 0 0 4px rgba(249, 220, 236, .4); }
+#sc-home .sc-cameo-sm { width: 36px; height: 46px; }
+
+/* header: the name on the left; the Japanese line and tonight's moon on the right */
+#sc-home .sc-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+#sc-home .sc-logo { font: 1.75rem/1 var(--h-name); color: var(--h-dusty); text-shadow: 0 0 16px rgba(249, 220, 236, .22); }
+#sc-home .sc-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+#sc-home .sc-jp { font: .66rem/1 var(--h-text); letter-spacing: .4em; margin-right: -.4em; color: var(--h-faded); }
+#sc-home .sc-moon { display: inline-flex; align-items: center; gap: 6px; font: .56rem/1 var(--h-meta); letter-spacing: .16em; text-transform: uppercase; color: var(--h-faded); }
+#sc-home .sc-moon svg { flex: none; width: 12px; height: 12px; overflow: visible; }
+#sc-home .sc-moon circle { fill: none; stroke: var(--h-faded); stroke-width: .8; }
+#sc-home .sc-moon path { fill: var(--h-porc); filter: drop-shadow(0 0 2px var(--h-glow)); }
+
+/* continue */
+#sc-home .sc-cont {
+    display: flex; align-items: center; gap: 12px; padding: 10px 12px; width: 100%; box-sizing: border-box; overflow: hidden;
+    background-color: rgba(249, 220, 236, .05);
+    border: 1px solid rgba(249, 220, 236, .28);
+    box-shadow: 0 0 20px -10px var(--h-glow);
+}
+#sc-home .sc-cont-t { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; overflow: hidden; }
+#sc-home .sc-cont-t b { font: 400 .64rem var(--h-meta); letter-spacing: .16em; text-transform: uppercase; color: var(--h-porc); }
+#sc-home .sc-cont-t .sc-nm { font-size: 1.25em; }
+#sc-home .sc-cont-line { font: italic .82rem var(--h-text); color: var(--h-mauve); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#sc-home .sc-go { font: 1.2rem var(--mainFontFamily, sans-serif); color: var(--h-porc); }
+
+/* search, archive, filters */
+#sc-home .sc-tools { display: flex; gap: 8px; align-items: stretch; width: 100%; }
+#sc-home .sc-search { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--h-soft); color: var(--h-faded); }
+#sc-home .sc-search input {
+    flex: 1; width: 100%; min-width: 0; padding: 7px 0; border: 0; background: none;
+    color: var(--h-bone); font: italic .95rem var(--h-text);
+}
+/* keyboard focus stays visible: the ring is drawn on the whole search box, so it
+   lines up with the box's border instead of hugging the bare input inside it */
+#sc-home .sc-search:focus-within { border-color: var(--h-dusty); outline: 2px solid var(--h-porc); outline-offset: 2px; }
+#sc-home .sc-search input:focus-visible { outline: none; }
+#sc-home .sc-search input::placeholder { color: var(--h-faded); opacity: 1; }
+/* the browser's own "clear" cross is blue in some of them: draw ours */
+#sc-home .sc-search input::-webkit-search-cancel-button {
+    -webkit-appearance: none; appearance: none; width: 14px; height: 14px; margin: 0 0 0 6px; cursor: pointer;
+    background-color: var(--h-faded);
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 14 14%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.3%22 stroke-linecap=%22round%22%3E%3Cpath d=%22M3.5 3.5L10.5 10.5M10.5 3.5L3.5 10.5%22/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 14 14%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.3%22 stroke-linecap=%22round%22%3E%3Cpath d=%22M3.5 3.5L10.5 10.5M10.5 3.5L3.5 10.5%22/%3E%3C/svg%3E") center / contain no-repeat;
+}
+#sc-home .sc-btn {
+    font: .68rem var(--h-meta); letter-spacing: .14em; text-transform: uppercase;
+    color: var(--h-dusty); border: 1px solid var(--h-line); padding: 6px 10px; white-space: nowrap;
+}
+#sc-home .sc-btn.sc-draw { display: grid; place-items: center; padding: 0 9px; }
+#sc-home .sc-btn.sc-draw svg { width: 14px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.1; }
+#sc-home .sc-btn.sc-fill,
+#sc-home .sc-btn.sc-on { color: var(--h-ink); background: var(--h-dusty); border-color: var(--h-dusty); }
+#sc-home .sc-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+#sc-home .sc-chips button {
+    font: .64rem var(--h-meta); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--h-mauve); border: 1px solid var(--h-soft); padding: 3px 9px;
+}
+#sc-home .sc-chips button[aria-pressed="true"] { color: var(--h-ink); background: var(--h-dusty); border-color: var(--h-dusty); }
+
+/* the characters' tags: one sideways row of chips under the search box */
+#sc-home .sc-tags {
+    display: flex; align-items: center; gap: 4px; margin: -4px 0 0;
+    --sc-tag-fade-start: 0px; --sc-tag-fade-end: 0px;
+}
+#sc-home .sc-tags[data-can-prev="true"] { --sc-tag-fade-start: 20px; }
+#sc-home .sc-tags[data-can-next="true"] { --sc-tag-fade-end: 20px; }
+#sc-home .sc-tagrow {
+    display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;
+    margin: -4px 0 0; padding: 2px;
+}
+#sc-home .sc-tags > .sc-tagrow {
+    flex: 1; min-width: 0; margin: 0;
+    -webkit-mask: linear-gradient(90deg, transparent, #000 var(--sc-tag-fade-start), #000 calc(100% - var(--sc-tag-fade-end)), transparent);
+    mask: linear-gradient(90deg, transparent, #000 var(--sc-tag-fade-start), #000 calc(100% - var(--sc-tag-fade-end)), transparent);
+}
+#sc-home .sc-tag-arrow {
+    display: none; flex: none; place-items: center; width: 28px; height: 28px;
+    color: var(--h-dusty); border: 1px solid transparent;
+    transition: color .15s ease, border-color .15s ease;
+}
+#sc-home .sc-tag-arrow svg { width: 10px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; stroke-linejoin: round; }
+#sc-home .sc-tag-arrow:disabled { opacity: .25; cursor: default; }
+@media (hover: hover) and (pointer: fine) {
+    #sc-home .sc-tags[data-overflow="true"] > .sc-tag-arrow { display: grid; }
+    #sc-home .sc-tag-arrow:not(:disabled):hover { color: var(--h-porc); border-color: var(--h-soft); }
+}
+#sc-home .sc-tagrow::-webkit-scrollbar { display: none; }
+#sc-home .sc-tagrow button {
+    flex: none; display: inline-flex; align-items: baseline; gap: 6px;
+    padding: 3px 10px; border: 1px solid var(--h-soft);
+    font: italic .8rem/1.3 var(--h-text); color: var(--h-mauve); white-space: nowrap;
+}
+#sc-home .sc-tagrow button::before { content: "✧"; font: normal 8px var(--mainFontFamily, sans-serif); color: var(--h-faded); }
+#sc-home .sc-tag-n { font: normal .56rem var(--h-meta); letter-spacing: .08em; color: var(--h-faded); }
+#sc-home .sc-tagrow button[aria-pressed="true"] { color: var(--h-ink); background: var(--h-dusty); border-color: var(--h-dusty); }
+#sc-home .sc-tagrow button[aria-pressed="true"]::before { content: "✦"; color: var(--h-ink); }
+#sc-home .sc-tagrow button[aria-pressed="true"] .sc-tag-n { color: rgba(22, 22, 22, .65); }
+#sc-home .sc-tagrow button:active { opacity: .7; }
+@media (hover: hover) { #sc-home .sc-tagrow button:not([aria-pressed="true"]):hover { color: var(--h-porc); border-color: var(--h-line); } }
+/* on a character's page the tags wrap under the name */
+#sc-home .sc-ptags { flex-wrap: wrap; overflow: visible; margin: -4px 0 0; padding: 0; -webkit-mask: none; mask: none; }
+
+/* section header: label · line · optional "all →" */
+#sc-home .sc-sec { display: flex; align-items: baseline; gap: 10px; margin-top: 2px; }
+#sc-home .sc-sec > span { font: .66rem var(--h-meta); letter-spacing: .2em; text-transform: uppercase; color: var(--h-faded); white-space: nowrap; }
+#sc-home .sc-sec::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--h-line), transparent); order: 1; }
+#sc-home .sc-sec .sc-link { order: 2; font: .66rem var(--h-meta); letter-spacing: .14em; text-transform: uppercase; color: var(--h-dusty); white-space: nowrap; }
+#sc-home .sc-sec .sc-link:hover { color: var(--h-porc); }
+
+/* sideways rows */
+#sc-home .sc-strip {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+    margin: -4px -4px 0;
+    padding: 7px 28px 6px 9px;
+    -webkit-mask: linear-gradient(90deg, #000 calc(100% - 32px), transparent);
+    mask: linear-gradient(90deg, #000 calc(100% - 32px), transparent);
+}
+#sc-home .sc-strip::-webkit-scrollbar { display: none; }
+#sc-home .sc-strip .sc-sh { flex: none; width: 72px; scroll-snap-align: start; }
+#sc-home .sc-strip .sc-sh .sc-cameo { width: 64px; height: 82px; }
+#sc-home .sc-strip .sc-sh.sc-big { width: 92px; }
+#sc-home .sc-strip .sc-sh.sc-big .sc-cameo { width: 84px; height: 108px; }
+#sc-home .sc-strip .sc-sh.sc-big .sc-nm { font-size: 1.2em; }
+
+
+/* grid (search, archive, "all"): 4 in a row */
+#sc-home .sc-shelf { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px 6px; padding: 6px 0 2px; }
+#sc-home .sc-sh { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; text-align: center; }
+#sc-home .sc-wrapc { position: relative; }
+#sc-home .sc-sh .sc-cameo { width: 58px; height: 74px; transition: box-shadow .25s ease, transform .15s ease; }
+#sc-home .sc-sh:active .sc-cameo { transform: scale(.95); box-shadow: 0 0 0 1px var(--h-porc), 0 0 0 4px rgba(22, 22, 22, .9), 0 0 0 5px var(--h-line), 0 0 18px var(--h-glow); }
+/* a finger has no hover: without this the glow sticks to the last cameo touched */
+@media (hover: hover) {
+    #sc-home .sc-sh:hover .sc-cameo { box-shadow: 0 0 0 1px var(--h-porc), 0 0 0 4px rgba(22, 22, 22, .9), 0 0 0 5px var(--h-line), 0 0 18px var(--h-glow); }
+    #sc-home .sc-cont:hover { border-color: rgba(249, 220, 236, .5); }
+    #sc-home .sc-btn:not(.sc-on):not(.sc-fill):hover { color: var(--h-porc); border-color: var(--h-porc); }
+}
+#sc-home .sc-cont:active { background-color: rgba(249, 220, 236, .1); }
+#sc-home .sc-btn:active,
+#sc-home .sc-crow-main:active { opacity: .7; }
+#sc-home .sc-sh .sc-nm { max-width: 100%; font-size: 1.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#sc-home .sc-sh .sc-meta { font-size: .58rem; }
+
+#sc-home .sc-pin { position: absolute; top: -3px; right: -6px; z-index: 1; font: 11px var(--mainFontFamily, sans-serif); color: var(--h-porc); text-shadow: 0 0 8px var(--h-glow); }
+#sc-home .sc-fresh { position: absolute; right: 3px; bottom: 5px; z-index: 1; width: 9px; height: 9px; border-radius: 50%; background: var(--h-porc); box-shadow: 0 0 0 2px #161616, 0 0 10px var(--h-porc); }
+#sc-home .sc-empty { margin: 8px 0; text-align: center; font-style: italic; color: var(--h-mauve); }
+#sc-home .sc-empty::before { content: "✧"; display: block; margin-bottom: 6px; font: normal 12px var(--mainFontFamily, sans-serif); color: var(--h-faded); }
+/* closing ornament: a star on a hairline */
+#sc-home .sc-foot { display: flex; align-items: center; gap: 10px; margin-top: 6px; font: 9px var(--mainFontFamily, sans-serif); color: var(--h-faded); }
+#sc-home .sc-foot::before,
+#sc-home .sc-foot::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, transparent, var(--h-soft)); }
+#sc-home .sc-foot::after { transform: scaleX(-1); }
+
+/* character page */
+#sc-home .sc-back { align-self: flex-start; font: .7rem var(--h-meta); letter-spacing: .16em; text-transform: uppercase; color: var(--h-dusty); padding: 4px 0; }
+#sc-home .sc-dh { display: flex; align-items: center; gap: 12px; }
+#sc-home .sc-dh .sc-nm { flex: 1; min-width: 0; font-size: 1.6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sc-home .sc-dh-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+#sc-home .sc-stat { margin-left: auto; font-size: .62rem; letter-spacing: .12em; }
+#sc-home .sc-chats { display: flex; flex-direction: column; gap: 8px; }
+#sc-home .sc-crow { position: relative; border-left: 1px solid var(--h-soft); background: rgba(231, 227, 224, .025); }
+#sc-home .sc-crow.sc-last { border-left-color: var(--h-porc); background: rgba(249, 220, 236, .045); }
+#sc-home .sc-crow-main { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 9px 40px 9px 12px; }
+#sc-home .sc-crow-t { display: flex; align-items: baseline; gap: 8px; font-size: .95rem; color: var(--h-bone); }
+#sc-home .sc-crow-t > span:not(.sc-star):not(.sc-tag) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#sc-home .sc-crow-t .sc-auto { font-style: italic; color: var(--h-mauve); }
+#sc-home .sc-star { color: var(--h-porc); font: 10px var(--mainFontFamily, sans-serif); }
+#sc-home .sc-tag { margin-left: auto; flex: none; font: .6rem var(--h-meta); letter-spacing: .14em; color: var(--h-porc); }
+#sc-home .sc-snip {
+    font: italic .85rem/1.4 var(--h-text); color: var(--h-mauve);
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+#sc-home .sc-more { position: absolute; top: 4px; right: 4px; width: 32px; height: 32px; font: 1.1rem var(--mainFontFamily, sans-serif); color: var(--h-faded); text-align: center; }
+#sc-home .sc-more[aria-expanded="true"] { color: var(--h-porc); }
+#sc-home .sc-acts { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 12px 10px; }
+#sc-home .sc-acts button { font: .64rem var(--h-meta); letter-spacing: .1em; text-transform: uppercase; color: var(--h-mauve); border: 1px dashed var(--h-soft); padding: 4px 9px; }
+#sc-home .sc-acts button:hover { color: var(--h-porc); border-color: var(--h-line); }
+#sc-home .sc-acts .sc-del { color: #d98fa6; border-color: rgba(217, 143, 166, .45); }
+
+/* search inside a character's chats: lines with the words marked */
+#sc-home .sc-csearch { min-height: 34px; }
+#sc-home .sc-hitgroup { padding-bottom: 6px; }
+#sc-home .sc-hitgroup .sc-crow-main { padding-right: 12px; }
+#sc-home .sc-hit {
+    display: flex; flex-direction: column; gap: 2px; width: 100%; box-sizing: border-box;
+    padding: 6px 12px 6px 22px; position: relative;
+}
+#sc-home .sc-hit::before { content: "✧"; position: absolute; left: 9px; top: 7px; font: 8px var(--mainFontFamily, sans-serif); color: var(--h-faded); }
+#sc-home .sc-hit .sc-meta { font-size: .6rem; }
+#sc-home .sc-hit-t { font: .86rem/1.45 var(--h-text); color: var(--h-mauve); overflow-wrap: anywhere; }
+#sc-home .sc-hit-t mark { background: rgba(249, 220, 236, .14); color: var(--h-porc); border-radius: 2px; padding: 0 1px; box-shadow: 0 1px 0 rgba(249, 220, 236, .5); }
+#sc-home .sc-hit:active { background: rgba(249, 220, 236, .06); }
+@media (hover: hover) { #sc-home .sc-hit:hover .sc-hit-t { color: var(--h-bone); } }
+#sc-home .sc-hit-more,
+#sc-home .sc-hit-wait { display: block; padding: 2px 12px 4px 22px; font-size: .6rem; }
+#sc-home .sc-more-found { align-self: center; margin-top: 2px; }
+
+@media (max-width: 360px) {
+    #sc-home .sc-sh .sc-cameo { width: 52px; height: 66px; }
+}
+/* a wide screen: the home fills the chat column instead of a phone-width strip */
+@media (min-width: 1000px) {
+    #sc-home { max-width: 940px; padding: 22px 20px 36px; gap: 18px; }
+    #sc-home .sc-body { gap: 18px; }
+    #sc-home .sc-logo { font-size: 2.3rem; }
+    #sc-home .sc-jp { font-size: .74rem; }
+    #sc-home .sc-moon { font-size: .6rem; }
+    #sc-home .sc-cont { padding: 14px 18px; gap: 16px; }
+    #sc-home .sc-cameo-cont { width: 50px; height: 62px; }
+    #sc-home .sc-cont-t .sc-nm { font-size: 1.45em; }
+    #sc-home .sc-cont-line { font-size: .9rem; }
+    #sc-home .sc-search input { padding: 9px 0; }
+    #sc-home .sc-strip { gap: 18px; padding-right: 40px; -webkit-mask: linear-gradient(90deg, #000 calc(100% - 48px), transparent); mask: linear-gradient(90deg, #000 calc(100% - 48px), transparent); }
+    #sc-home .sc-strip .sc-sh { width: 82px; }
+    #sc-home .sc-strip .sc-sh .sc-cameo { width: 74px; height: 95px; }
+    #sc-home .sc-strip .sc-sh.sc-big { width: 104px; }
+    #sc-home .sc-strip .sc-sh.sc-big .sc-cameo { width: 96px; height: 123px; }
+    #sc-home .sc-shelf { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 20px 10px; }
+    #sc-home .sc-sh .sc-cameo { width: 68px; height: 87px; }
+    #sc-home .sc-sh .sc-meta { font-size: .62rem; }
+    #sc-home .sc-dh .sc-nm { font-size: 2em; }
+    #sc-home .sc-cameo-sm { width: 44px; height: 56px; }
+}
+/* motion, only for those who have not asked for less of it: the home rises in
+   when it appears, and the "talked today" dot breathes */
+@media (prefers-reduced-motion: no-preference) {
+    #sc-home.sc-enter > :not(.sc-body),
+    #sc-home.sc-enter .sc-body > * { animation: sc-rise .55s cubic-bezier(.2, .7, .2, 1) both; }
+    #sc-home.sc-enter > :nth-child(2) { animation-delay: .05s; }
+    #sc-home.sc-enter > :nth-child(3) { animation-delay: .1s; }
+    #sc-home.sc-enter .sc-body > :nth-child(n) { animation-delay: .15s; }
+    #sc-home.sc-enter .sc-body > :nth-child(n + 3) { animation-delay: .22s; }
+    #sc-home.sc-enter .sc-body > :nth-child(n + 5) { animation-delay: .29s; }
+    #sc-home.sc-enter > .sc-foot { animation-delay: .4s; }
+    #sc-home .sc-fresh { animation: sc-breathe 3.6s ease-in-out infinite; }
+}
+@keyframes sc-rise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes sc-breathe { 50% { opacity: .55; box-shadow: 0 0 0 2px #161616, 0 0 3px var(--h-porc); } }
+@media (prefers-reduced-motion: reduce) {
+    #sc-home .sc-sh .sc-cameo { transition: none; }
+}
+body.no_animation #sc-home.sc-enter > :not(.sc-body),
+body.no_animation #sc-home.sc-enter .sc-body > *,
+body.no_animation #sc-home .sc-fresh { animation: none; }
+
+/* ── close-chat cross (top bar) ── */
+#sc-close-chat[hidden] { display: none !important; }
+#sc-close-chat .drawer-icon { cursor: pointer; }
+#sc-close-chat .drawer-icon::before {
+    content: "" !important;
+    display: inline-block;
+    width: var(--sc-ico-size, .92em);
+    height: var(--sc-ico-size, .92em);
+    vertical-align: -0.1em;
+    background-color: currentColor;
+    -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M6.5 6.5L17.5 17.5M17.5 6.5L6.5 17.5%22/%3E%3Cpath d=%22M4 4H7M4 4V7M20 4H17M20 4V7M4 20H7M4 20V17M20 20H17M20 20V17%22 stroke-width=%221.1%22/%3E%3C/svg%3E") center / contain no-repeat;
+    mask: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M6.5 6.5L17.5 17.5M17.5 6.5L6.5 17.5%22/%3E%3Cpath d=%22M4 4H7M4 4V7M20 4H17M20 4V7M4 20H7M4 20V17M20 20H17M20 20V17%22 stroke-width=%221.1%22/%3E%3C/svg%3E") center / contain no-repeat;
+}
+#sc-close-chat .drawer-icon:hover { color: var(--sc-porcelain, var(--SmartThemeQuoteColor)) !important; }
+
+/* ── settings panel ── */
+.sc-settings .inline-drawer-header b { font-weight: 600; letter-spacing: .02em; }
+.sc-settings .sc-star { color: var(--SmartThemeQuoteColor, #f9dcec); font-size: .8em; }
+/* no display here: SillyTavern keeps the block closed with display: none and opens it itself */
+.sc-settings .inline-drawer-content { padding-block: 6px 10px; }
+.sc-settings .inline-drawer-content > * + * { margin-top: 8px; }
+.sc-settings .sc-field { display: flex; flex-direction: column; gap: 4px; margin-top: 2px; }
+.sc-settings .sc-field input { width: 100%; box-sizing: border-box; margin: 0; }
+
+/* ── draw a card ── */
+#sc-tarot {
+    --sc-t-viewport-height: 100vh;
+    --sc-t-viewport-width: 100vw;
+    --sc-t-pad-top: max(20px, env(safe-area-inset-top));
+    --sc-t-pad-bottom: max(20px, env(safe-area-inset-bottom));
+    position: fixed; inset: auto; z-index: 9990;
+    top: var(--sc-t-viewport-top, 0px); left: var(--sc-t-viewport-left, 0px);
+    width: var(--sc-t-viewport-width); height: var(--sc-t-viewport-height); box-sizing: border-box;
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 18px;
+    overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain;
+    padding: var(--sc-t-pad-top) max(16px, env(safe-area-inset-right)) var(--sc-t-pad-bottom) max(16px, env(safe-area-inset-left));
+    background: radial-gradient(60% 50% at 50% 45%, rgba(40, 34, 38, .78), rgba(10, 10, 10, .9));
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    color: var(--h-bone); font-family: var(--h-text);
+    opacity: 0; transition: opacity .3s ease;
+}
+@supports (height: 100dvh) {
+    #sc-tarot { --sc-t-viewport-height: 100dvh; }
+}
+#sc-tarot.sc-t-in { opacity: 1; }
+#sc-tarot button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+#sc-tarot button:focus-visible { outline: 2px solid var(--h-porc); outline-offset: 2px; }
+#sc-tarot .sc-t-stage {
+    /* Reserve room for the reading and buttons before sizing the card.
+       Auto margins center the group only while it fits; overflow starts at
+       the top and stays reachable by scrolling, including with larger text. */
+    flex: none; margin-top: auto; max-width: 100%; perspective: 1100px;
+    width: min(62vw, 230px, max(96px, calc((var(--sc-t-viewport-height) - var(--sc-t-pad-top) - var(--sc-t-pad-bottom) - 9rem) * .625)));
+}
+#sc-tarot .sc-t-card {
+    position: relative; width: 100%; aspect-ratio: 100 / 160;
+    transform-style: preserve-3d; transition: transform .7s cubic-bezier(.3, .7, .2, 1);
+    transform: translateY(14px) rotateY(0deg);
+}
+#sc-tarot.sc-t-in .sc-t-card { transform: translateY(0) rotateY(0deg); }
+#sc-tarot.sc-t-up .sc-t-card { transform: rotateY(180deg); }
+#sc-tarot .sc-t-face {
+    position: absolute; inset: 0; border-radius: 10px; overflow: hidden;
+    -webkit-backface-visibility: hidden; backface-visibility: hidden;
+    background: linear-gradient(160deg, #262224, #141414 70%);
+    box-shadow: 0 0 0 1px rgba(199, 179, 190, .35), 0 18px 50px -18px #000, 0 0 40px -12px var(--h-glow);
+}
+#sc-tarot .sc-t-back svg { width: 100%; height: 100%; display: block; fill: none; stroke: var(--h-dusty); stroke-width: 1; }
+#sc-tarot .sc-t-back svg .f { fill: var(--h-porc); stroke: none; filter: drop-shadow(0 0 3px var(--h-glow)); }
+#sc-tarot .sc-t-front {
+    transform: rotateY(180deg);
+    display: flex; flex-direction: column; align-items: center; gap: 6%;
+    padding: 8% 9% 9%; box-sizing: border-box;
+    box-shadow: inset 0 0 0 5px #141414, inset 0 0 0 6px rgba(199, 179, 190, .45), 0 0 0 1px rgba(199, 179, 190, .35), 0 18px 50px -18px #000, 0 0 46px -10px var(--h-glow);
+}
+#sc-tarot .sc-t-num { font: 1rem/1 var(--h-name); letter-spacing: .2em; margin-right: -.2em; color: var(--h-porc); }
+#sc-tarot .sc-t-win {
+    flex: 1; width: 100%; min-height: 0; display: grid; place-items: center; overflow: hidden;
+    border-radius: 999px 999px 4px 4px; background: radial-gradient(circle at 50% 35%, #4a4246, #1d1b1a);
+    box-shadow: 0 0 0 1px var(--h-dusty), 0 0 0 4px #141414, 0 0 0 5px rgba(199, 179, 190, .3);
+}
+#sc-tarot .sc-t-win img { width: 100%; height: 100%; object-fit: cover; object-position: center 22%; display: block; }
+#sc-tarot .sc-t-win .sc-ini { font: 3rem var(--h-name); color: var(--h-porc); }
+#sc-tarot .sc-t-name {
+    max-width: 100%; font: 1.35rem/1.05 var(--h-name); color: var(--h-dusty); text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 14px rgba(249, 220, 236, .25);
+}
+#sc-tarot .sc-t-arc { font: .58rem var(--h-meta); letter-spacing: .24em; margin-right: -.24em; text-transform: uppercase; color: var(--h-faded); text-align: center; }
+#sc-tarot .sc-t-read {
+    flex: none; margin: 0; max-width: min(300px, 100%); min-height: 2.9em; text-align: center; overflow-wrap: anywhere;
+    font: italic .95rem/1.45 var(--h-text); color: var(--h-mauve);
+    opacity: 0; transition: opacity .4s ease .35s;
+}
+#sc-tarot .sc-t-read b { font-weight: 400; color: var(--h-porc); }
+#sc-tarot.sc-t-up .sc-t-read { opacity: 1; }
+#sc-tarot .sc-t-acts { flex: none; max-width: 100%; margin-bottom: auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+#sc-tarot .sc-btn {
+    font: .68rem var(--h-meta); letter-spacing: .14em; text-transform: uppercase;
+    color: var(--h-dusty); border: 1px solid var(--h-line); padding: 8px 12px;
+    max-width: 100%; box-sizing: border-box; white-space: normal; overflow-wrap: anywhere; text-align: center;
+}
+#sc-tarot .sc-btn.sc-fill { color: var(--h-ink); background: var(--h-dusty); border-color: var(--h-dusty); }
+#sc-tarot .sc-btn:active { opacity: .7; }
+#sc-tarot .sc-t-x { padding: 8px 11px; }
+@media (prefers-reduced-motion: reduce) {
+    #sc-tarot .sc-t-card { transition: none; }
+}
+
+/* ── "is typing" ──
+   Under the last message: the character's cameo breathing light, a bubble with
+   three twinkling stars and the name. Added and removed by index.js. */
+#sc-typing {
+    --h-porc: var(--sc-porcelain, var(--SmartThemeQuoteColor, #f9dcec));
+    --h-dusty: var(--sc-dusty, #c7b3be);
+    --h-faded: var(--sc-faded, #9c8a95);
+    --h-soft: rgba(199, 179, 190, .22);
+    --h-glow: var(--sc-glow, rgba(249, 220, 236, .35));
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex: none;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    padding: 10px 14px 14px;
+    animation: scx-typing-in .35s ease both;
+}
+#sc-typing .sc-cameo {
+    position: relative; flex: none; display: grid; place-items: center; overflow: hidden;
+    width: 40px; height: 50px; border-radius: 50%;
+    background: radial-gradient(circle at 50% 35%, #4a4246, #1d1b1a);
+    box-shadow: 0 0 0 1px var(--h-dusty), 0 0 0 3px rgba(22, 22, 22, .9), 0 0 0 4px var(--h-soft);
+    animation: scx-breathe 2.6s ease-in-out infinite;
+}
+#sc-typing .sc-cameo img { width: 100%; height: 100%; object-fit: cover; object-position: center 25%; display: block; }
+#sc-typing .sc-ini { font: 1.3rem var(--sc-name, "Italiana", Georgia, serif); color: var(--h-porc); }
+#sc-typing .sc-typing-stars {
+    display: flex; gap: 7px; padding: 9px 14px;
+    border: 1px solid var(--h-soft); border-radius: 3px 14px 14px 14px;
+    background: rgba(231, 227, 224, .04);
+    font: 11px/1 var(--mainFontFamily, sans-serif); color: var(--h-porc);
+}
+#sc-typing .sc-typing-stars span { animation: scx-twinkle 1.4s ease-in-out infinite; }
+#sc-typing .sc-typing-stars span:nth-child(2) { animation-delay: .2s; }
+#sc-typing .sc-typing-stars span:nth-child(3) { animation-delay: .4s; }
+@keyframes scx-typing-in { from { opacity: 0; transform: translateY(4px); } }
+@keyframes scx-breathe { 50% { box-shadow: 0 0 0 1px var(--h-porc), 0 0 0 3px rgba(22, 22, 22, .9), 0 0 0 4px rgba(199, 179, 190, .45), 0 0 16px var(--h-glow); } }
+@keyframes scx-twinkle { 0%, 100% { opacity: .25; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) {
+    #sc-typing, #sc-typing .sc-cameo, #sc-typing .sc-typing-stars span { animation: none; }
+    #sc-typing .sc-typing-stars span { opacity: .7; }
+}
+
+/* ── the waiting moth (stop button) ──
+   body[data-sc-wait] is set by index.js from "sent" until the first word of the
+   reply. The moth is drawn in three layers so the wings can move: the body and
+   antennae on the icon, a wing on each side of it. */
+body[data-generating][data-sc-wait] #mes_stop {
+    /* the same size as the moth on "send": the theme's input-row icon size, times the moth's own 1.05 */
+    --moth: calc(var(--sc-input-ico, calc(var(--mainFontSize, 15px) * 1.32)) * 1.05);
+    display: grid !important;
+    flex: none;
+    place-items: center;
+    width: var(--bottomFormBlockSize, 2.4em);
+    height: var(--bottomFormBlockSize, 2.4em);
+    padding: 0;
+    position: relative;
+    perspective: 70px;
+    opacity: 1;
+    color: var(--sc-porcelain, var(--SmartThemeQuoteColor, #f9dcec));
+    animation: scx-glow 2.8s ease-in-out infinite;
+}
+body[data-generating][data-sc-wait] #mes_stop > i {
+    width: var(--moth); height: var(--moth);
+    background-color: currentColor;
+    -webkit-mask: var(--scx-moth-body) center / contain no-repeat;
+    mask: var(--scx-moth-body) center / contain no-repeat;
+}
+body[data-generating][data-sc-wait] #mes_stop > i::before { content: none; }
+body[data-generating][data-sc-wait] #mes_stop::before,
+body[data-generating][data-sc-wait] #mes_stop::after {
+    content: "";
+    position: absolute;
+    left: calc(50% - var(--moth) / 2);
+    top: calc(50% - var(--moth) / 2);
+    width: var(--moth); height: var(--moth);
+    background-color: currentColor;
+    transform-origin: 50% 50%;
+    animation: scx-wing-l 1.5s ease-in-out infinite alternate;
+}
+body[data-generating][data-sc-wait] #mes_stop::before {
+    -webkit-mask: var(--scx-moth-left) center / contain no-repeat;
+    mask: var(--scx-moth-left) center / contain no-repeat;
+}
+body[data-generating][data-sc-wait] #mes_stop::after {
+    -webkit-mask: var(--scx-moth-right) center / contain no-repeat;
+    mask: var(--scx-moth-right) center / contain no-repeat;
+    animation-name: scx-wing-r;
+}
+@keyframes scx-wing-l { from { transform: rotateY(0deg); } to { transform: rotateY(58deg); } }
+@keyframes scx-wing-r { from { transform: rotateY(0deg); } to { transform: rotateY(-58deg); } }
+@keyframes scx-glow {
+    0%, 100% { filter: drop-shadow(0 0 3px rgba(249, 220, 236, .45)); }
+    50%      { filter: drop-shadow(0 0 9px rgba(249, 220, 236, .9)); }
+}
+@media (prefers-reduced-motion: reduce) {
+    body[data-generating][data-sc-wait] #mes_stop,
+    body[data-generating][data-sc-wait] #mes_stop::before,
+    body[data-generating][data-sc-wait] #mes_stop::after { animation: none; }
+    body[data-generating][data-sc-wait] #mes_stop { filter: drop-shadow(0 0 6px rgba(249, 220, 236, .7)); }
+}
+
+/* ── loading screen ──
+   SillyTavern's start-up splash (logo, gear, "Initializing…") and every later
+   full-screen loader: fog, the moth flapping in place of the gear, the name. */
+#preloader { background: radial-gradient(70% 55% at 50% 42%, #2a2528, #161616 70%) !important; }
+#loader.splash-screen { gap: 14px; }
+#loader.splash-screen .splash-logo { display: none; }
+#loader.splash-screen::before {
+    content: "Shadow Cherry"; order: 1;
+    font: 2.1rem/1 var(--h-name); color: var(--h-dusty); text-shadow: 0 0 18px rgba(249, 220, 236, .3);
+}
+#loader.splash-screen::after {
+    content: "影色のさくらんぼ"; order: 2;
+    font: .72rem/1 var(--h-text); letter-spacing: .5em; margin-right: -.5em; color: var(--h-faded);
+}
+#loader.splash-screen .splash-message {
+    order: 3; margin-top: 18px;
+    font: .7rem var(--h-meta); letter-spacing: .24em; text-transform: uppercase; color: var(--h-faded); opacity: 1;
+}
+#loader #load-spinner {
+    --moth: 64px;
+    order: 0;
+    position: relative;
+    width: var(--moth); height: var(--moth);
+    font-size: 0;
+    color: var(--h-porc);
+    animation: none !important;          /* SillyTavern spins the gear */
+    filter: drop-shadow(0 0 10px rgba(249, 220, 236, .6));
+}
+#loader.splash-screen #load-spinner { margin-bottom: 18px; }
+/* the gear glyph gives way to the moth: body still, both wings folding in and out */
+#loader #load-spinner::before,
+#loader #load-spinner::after {
+    content: "" !important;
+    position: absolute; inset: 0;
+    background-color: currentColor;
+    -webkit-mask: var(--scx-moth-body) center / contain no-repeat;
+    mask: var(--scx-moth-body) center / contain no-repeat;
+}
+#loader #load-spinner::after {
+    -webkit-mask-image: var(--scx-moth-wings);
+    mask-image: var(--scx-moth-wings);
+    animation: scx-flap 1.5s ease-in-out infinite alternate;
+}
+@keyframes scx-flap { to { transform: scaleX(.42); } }
+@media (prefers-reduced-motion: reduce) {
+    #loader #load-spinner::after { animation: none; }
+}
+
+/* ── avatars another extension zooms and clips (AvatarAdjuster…) ──
+   index.js marks them and adds a layer next to the avatar; the theme's frame is drawn
+   there instead of on the clipped box. Ripple also clips the picture to its window here.
+   #chat#chat: Moonlit nests the preset's CSS, which lifts its weight; these must win. */
+/* A static wrapper needs a containing block. Let Moonlit take precedence when
+   the user switches to a style with a sticky or otherwise positioned wrapper. */
+:where(#chat .mes .sc-av-host) { position: relative; }
+#chat#chat .mes .avatar.sc-av-lifted::after { display: none !important; }
+#chat#chat .mes .avatar.sc-av-lifted {
+    overflow: hidden !important;
+    /* the picture's own place and shape in the box, measured by index.js */
+    -webkit-clip-path: var(--sc-av-clip, none);
+    clip-path: var(--sc-av-clip, none);
+}
+#chat#chat .mes .avatar.sc-av-lifted > img { border-radius: 0 !important; }
+#chat#chat .mes .sc-av-frame {
+    position: absolute;
+    z-index: 5;
+    pointer-events: none;
+    background: center / 100% 100% no-repeat;
+}
+body:not(.ripplestyle) #chat#chat .mes .sc-av-frame { background-image: var(--sc-reticle, none); transform: scale(1.24); }
+body.ripplestyle #chat#chat .mes .sc-av-frame { background-image: var(--sc-frame, none); }
+body.ripplestyle #chat#chat .mes .mesAvatarWrapper .avatar.sc-av-lifted {
+    -webkit-clip-path: none;
+    clip-path: none;
+    box-sizing: border-box;
+    /* Track sizes are relative to this portrait on their respective axes. */
+    display: grid !important;
+    grid-template-columns: 1fr 78.95% 1fr;
+    grid-template-rows: 1fr 78.95% 1fr;
+    gap: 0;
+    padding: 0 !important;
+    -webkit-mask: var(--sc-shape) center / 78.95% 78.95% no-repeat;
+    mask: var(--sc-shape) center / 78.95% 78.95% no-repeat;
+}
+body.ripplestyle #chat#chat .mes .mesAvatarWrapper .avatar.sc-av-lifted img {
+    grid-area: 2 / 2;
+    position: static !important;
+    -webkit-mask: none !important;
+    mask: none !important;
+}
+
+/* Keep the picture window round independently of image zoom and the
+   previously selected chat style. The decorative ring is a separate layer. */
+/* The original Shadow Cherry preset fills the frame even when Moonlit
+   gives the image a smaller maximum than its surrounding avatar. */
+body:not(.ripplestyle) #chat#chat .mes .mesAvatarWrapper > .avatar > img {
+    width: 100% !important;
+    height: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    object-fit: cover;
+}
+body:not(.ripplestyle) #chat#chat .mes .mesAvatarWrapper > .avatar:not(.sc-av-lifted) > img {
+    border-radius: 50% !important;
+}
+body:not(.ripplestyle) #chat#chat .mes .mesAvatarWrapper > .avatar.sc-av-lifted {
+    -webkit-clip-path: var(--sc-av-clip, inset(0 round 50%));
+    clip-path: var(--sc-av-clip, inset(0 round 50%));
+}
+
+/* Echo and Tide set .mes { padding: 0 }, which leaves the avatar a few pixels from
+   #chat's edge, and #chat clips horizontally. The reticle reaches 12% of the avatar
+   past each side, so give the message that much room on both sides. */
+body:is(.echostyle, .tidestyle):not(.hideChatAvatars) #chat#chat .mes {
+    padding-inline: calc(var(--custom-echo-avatar, 48px) * .12) !important;
+}
+
+/* The gear remains AA's original child of the message. Its empty layout
+   slot follows the metadata layout of the active chat style. */
+#chat .sc-gear-slot {
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    align-self: center;
+    vertical-align: middle;
+    margin: 6px 3px;
+    pointer-events: none;
+}
+/* Echo and Tide position the number above the name on both sides.
+   Flex row reversal already mirrors the horizontal order for the persona. */
+body:is(.echostyle, .tidestyle, .whisperstyle, .hushstyle) #chat .mes > .mesAvatarWrapper > .sc-gear-slot {
+    position: relative;
+    top: calc(var(--custom-ChatAvatar, 40px) * -.35);
+}
+body:is(.tidestyle, .whisperstyle, .hushstyle) #chat .mes > .mesAvatarWrapper > .sc-gear-slot {
+    top: calc(var(--custom-ChatAvatar, 40px) * -.375);
+}
+body:is(.tidestyle, .whisperstyle, .hushstyle).big-avatars #chat .mes > .mesAvatarWrapper > .sc-gear-slot {
+    top: 0;
+}
+
+/* The full-width avatar row sits above the raised message header.
+   Let clicks through its empty space while preserving its own controls. */
+body:is(.whisperstyle, .hushstyle) #chat .mes > .mesAvatarWrapper {
+    pointer-events: none;
+}
+body:is(.whisperstyle, .hushstyle) #chat .mes > .mesAvatarWrapper > :where(.avatar, .mes_timer, .mesIDDisplay, .tokenCounterDisplay) {
+    pointer-events: auto;
+}
+body.ripplestyle #chat .mesAvatarWrapper > .sc-gear-slot {
+    justify-self: center;
+    margin: 3px 0 0;
+}
+
+/* In editing mode Echo paints the bubble on .mes_text. Its subgrid
+   reserves the toolbar's actual height, including a wrapped second row.
+   Keep Tavern's original controls in the header DOM for save and cancel. */
+#chat#chat .mes .mes_block:has(.edit_textarea) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto auto;
+    padding-bottom: 0 !important;
+}
+#chat#chat .mes_block:has(.edit_textarea) > .ch_name {
+    display: contents;
+}
+/* Ripple's header divider would otherwise become a grid item after the toolbar. */
+body.ripplestyle #chat .mes_block:has(.edit_textarea) > .ch_name::after {
+    content: none;
+}
+#chat#chat .mes_block:has(.edit_textarea) > .mes_reasoning_details {
+    grid-area: 2 / 1;
+}
+#chat#chat .mes_block:has(.edit_textarea) > .ch_name > .mes_edit_buttons {
+    grid-area: 4 / 1;
+    position: static !important;
+    z-index: 5;
+    align-self: end;
+    margin: 6px 0 8px !important;
+}
+#chat#chat .mes_text:has(> .edit_textarea) {
+    grid-area: 3 / 1;
+}
+body.echostyle #chat#chat .mes .mes_text:has(> .edit_textarea) {
+    grid-area: 3 / 1 / 5;
+    display: grid;
+    grid-template-rows: subgrid;
+    grid-template-columns: minmax(0, 1fr);
+    margin-bottom: 0 !important;
+}
+body.echostyle #chat .mes .edit_textarea {
+    grid-row: 1;
+}
+body.tidestyle #chat .mes .mes_block:has(.edit_textarea) {
+    --sc-edit-column: 70%;
+}
+@media (max-width: 1000px) {
+    body.tidestyle #chat .mes .mes_block:has(.edit_textarea) {
+        --sc-edit-column: 90%;
+    }
+}
+body.tidestyle #chat .mes .mes_text:has(> .edit_textarea),
+body.tidestyle #chat .mes .mes_edit_buttons {
+    width: var(--sc-edit-column);
+    justify-self: start;
+}
+body.tidestyle #chat .mes[is_user="true"] :is(.mes_text:has(> .edit_textarea), .mes_edit_buttons) {
+    justify-self: end;
+}
+
+#chat .mes > .aa-edit-btn {
+    z-index: 8 !important;
+    width: 16px !important;
+    height: 16px !important;
+    font-size: 9px !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+}
+#chat .mes > .aa-edit-btn i { font-size: inherit !important; }
+#chat .mes > .aa-edit-btn::before { inset: 0; }
+@media (hover: hover) and (pointer: fine) {
+    #chat .mes > .mesAvatarWrapper:has(> .avatar:hover) ~ .aa-edit-btn { opacity: .35; }
+}
+@media (hover: none), (pointer: coarse), (max-width: 768px) {
+    #chat .mes > .aa-edit-btn { opacity: .15 !important; }
+    #chat .mes > .aa-edit-btn:active { opacity: .7 !important; }
+}
+#chat .sc-gear-slot[hidden],
+body.hideChatAvatars #chat .sc-gear-slot,
+#chat .mes.smallSysMes .sc-gear-slot,
+body.hideChatAvatars #chat .mes > .aa-edit-btn,
+#chat .mes.smallSysMes > .aa-edit-btn,
+#chat .mes:not(:has(> .mesAvatarWrapper > .avatar)) > .aa-edit-btn {
+    display: none !important;
+}
+@supports (anchor-scope: --sc-portrait) and (left: anchor(--sc-portrait left)) {
+    #chat .mes:has(> .aa-edit-btn) { anchor-scope: --sc-portrait; }
+    #chat .sc-gear-slot { anchor-name: --sc-portrait; }
+    #chat .mes > .aa-edit-btn {
+        position-anchor: --sc-portrait;
+        left: anchor(left, -10000px) !important;
+        top: anchor(top, -10000px) !important;
+        position-visibility: anchors-visible;
+    }
+}
+#chat .mes > .aa-edit-btn.sc-gear-measured {
+    left: var(--sc-gear-x, -10000px) !important;
+    top: var(--sc-gear-y, -10000px) !important;
+}
+
+/* ── drop cap ──
+   The first letter of the character's message, in the name font, two lines tall.
+   Switched on and off from the settings panel (body.sc-dropcap).
+   The first paragraph that has text: an info block's regex can leave an empty <p>
+   in front of it. :is() lets a browser that does not know "of" keep the first <p>.
+
+   The letter floats and is sized from the paragraph's own line height, not with the
+   browser's initial-letter: that one measures the text font, and a custom message
+   font (or Safari) can drop the letter a whole line. The cap's own font is pinned
+   with !important so a "font for everything" rule cannot swap it; --sc-cap-k is that
+   font's capital height (Italiana .70, Cormorant .636), measured from the font files. */
+@property --sc-cap-L { syntax: "<length>"; inherits: true; initial-value: 0px; }
+@property --sc-cap-E { syntax: "<length>"; inherits: true; initial-value: 0px; }
+/* One selector for the first paragraph, written once: every rule below is nested in it.
+   [data-sc-cap="alt"] & = the same paragraph inside a message index.js marked "alt"
+   (index.js only sets that attribute on .mes), with the same specificity as before. */
+body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty))) {
+    &::first-letter {
+        font-family: var(--sc-name, "Italiana", "Cormorant Garamond", Georgia, serif) !important;
+        font-style: normal !important;
+        font-weight: 400 !important;
+        color: var(--sc-porcelain, var(--SmartThemeQuoteColor, #f9dcec));
+        text-shadow: 0 0 12px rgba(249, 220, 236, .35);
+    }
+    /* Italiana has no Cyrillic: a message that starts with a Russian (or other non-Latin)
+       letter is marked by index.js and gets a cap font that has that letter */
+    [data-sc-cap="alt"] &::first-letter {
+        font-family: var(--sc-cap-alt, "Cormorant Garamond", Georgia, serif) !important;
+        font-weight: 500 !important;
+    }
+    @supports (height: 1lh) {
+        & {
+            --sc-cap-L: 1lh;
+            --sc-cap-E: 1em;
+            --sc-cap-k: .7;
+        }
+        [data-sc-cap="alt"] & {
+            --sc-cap-k: .636;
+        }
+        &::first-letter {
+            float: left;
+            font-size: calc((var(--sc-cap-L) + .66 * var(--sc-cap-E)) / var(--sc-cap-k));
+            line-height: var(--sc-cap-k);
+            margin: calc(var(--sc-cap-L) / 2 - .36 * var(--sc-cap-E)) .08em 0 0;
+            padding: 0;
+            -webkit-initial-letter: normal;
+            initial-letter: normal;
+        }
+        /* Cormorant's capitals carry wider side space of their own */
+        [data-sc-cap="alt"] &::first-letter { margin-right: 0; }
+    }
+}
+/* very old browsers: just a larger first letter, nothing floats */
+@supports not (height: 1lh) {
+    body.sc-dropcap #chat .mes[is_user="false"]:not([is_system="true"]) .mes_text > :is(p:first-of-type, :nth-child(1 of p:not(:empty)))::first-letter {
+        font-size: 1.7em;
+        line-height: 1;
+    }
+}
+
+/* @moth-assets (written by tools/assets.py) */
+:root {
+    --scx-moth-body: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M12 7.8V17%22/%3E%3Cpath d=%22M11.5 8C11 6 10 4.6 8.8 4%22/%3E%3Cg transform=%22translate%2824 0%29 scale%28-1 1%29%22%3E%3Cpath d=%22M11.5 8C11 6 10 4.6 8.8 4%22/%3E%3C/g%3E%3C/svg%3E");
+    --scx-moth-left: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M11.3 9.2C8.6 5.8 4.6 3.8 2.6 4.2C3 8.4 6.6 11.4 11.3 11.8%22/%3E%3Cpath d=%22M11.3 12.6C8.2 12.8 6.4 15.2 7.2 17.8L4.6 21.8L9.2 18.6C10.6 17.4 11.2 15.6 11.3 13.8%22/%3E%3C/svg%3E");
+    --scx-moth-right: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cg transform=%22translate%2824 0%29 scale%28-1 1%29%22%3E%3Cpath d=%22M11.3 9.2C8.6 5.8 4.6 3.8 2.6 4.2C3 8.4 6.6 11.4 11.3 11.8%22/%3E%3Cpath d=%22M11.3 12.6C8.2 12.8 6.4 15.2 7.2 17.8L4.6 21.8L9.2 18.6C10.6 17.4 11.2 15.6 11.3 13.8%22/%3E%3C/g%3E%3C/svg%3E");
+    --scx-moth-wings: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%23000%22 stroke-width=%221.6%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M11.3 9.2C8.6 5.8 4.6 3.8 2.6 4.2C3 8.4 6.6 11.4 11.3 11.8%22/%3E%3Cpath d=%22M11.3 12.6C8.2 12.8 6.4 15.2 7.2 17.8L4.6 21.8L9.2 18.6C10.6 17.4 11.2 15.6 11.3 13.8%22/%3E%3Cg transform=%22translate%2824 0%29 scale%28-1 1%29%22%3E%3Cpath d=%22M11.3 9.2C8.6 5.8 4.6 3.8 2.6 4.2C3 8.4 6.6 11.4 11.3 11.8%22/%3E%3Cpath d=%22M11.3 12.6C8.2 12.8 6.4 15.2 7.2 17.8L4.6 21.8L9.2 18.6C10.6 17.4 11.2 15.6 11.3 13.8%22/%3E%3C/g%3E%3C/svg%3E");
+}
+/* @end-moth-assets */
