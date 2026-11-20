@@ -648,6 +648,13 @@ body:not(.ripplestyle) #chat#chat .mes .mesAvatarWrapper > .avatar.sc-av-lifted 
     clip-path: var(--sc-av-clip, inset(0 round 50%));
 }
 
+/* Echo and Tide set .mes { padding: 0 }, which leaves the avatar a few pixels from
+   #chat's edge, and #chat clips horizontally. The reticle reaches 12% of the avatar
+   past each side, so give the message that much room on both sides. */
+body:is(.echostyle, .tidestyle):not(.hideChatAvatars) #chat#chat .mes {
+    padding-inline: calc(var(--custom-echo-avatar, 48px) * .12) !important;
+}
+
 /* The gear remains AA's original child of the message. Its empty layout
    slot follows the metadata layout of the active chat style. */
 #chat .sc-gear-slot {
