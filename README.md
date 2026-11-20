@@ -2,10 +2,8 @@
 
 *影色のさくらんぼ*
 
-Расширение для [SillyTavern](https://github.com/SillyTavern/SillyTavern) под тему **[Moonlit Echoes](https://github.com/RivelleDays/SillyTavern-MoonlitEchoesTheme)**:
+Расширение для [SillyTavern](https://github.com/SillyTavern/SillyTavern) на базе **[Moonlit Echoes](https://github.com/RivelleDays/SillyTavern-MoonlitEchoesTheme)**:
 полка с персонажами вместо списка чатов, мотылёк-пауза, таро, буквица и многое другое.
-
-by **ewwn1h** ♡
 
 ---
 
@@ -57,7 +55,7 @@ by **ewwn1h** ♡
 
 ### ✦ Буквица
 
-Первая буква первого абзаца ответа персонажа оформляется как буквица. Включается в настройках расширения.
+Первая буква первого абзаца ответа персонажа оформляется как буквица. Включается/выключается в настройках расширения.
 
 ### ✦ Крестик «закрыть чат»
 
@@ -70,8 +68,8 @@ by **ewwn1h** ♡
 | | |
 |---|---|
 | **[Moonlit Echoes Theme](https://github.com/RivelleDays/SillyTavern-MoonlitEchoesTheme)** by RivelleDays | тема, **обязательна**: цвета, шрифты и стили стилей чата берутся из её пресета. Пресет называется `[Moonlit] Shadow Cherry meow.json`, установить через *Quick Settings → User CSS theme preset*. |
-| **[AvatarAdjuster](https://github.com/mooxsy72-oss/SillyTavern-AvatarAdjuster)** by mooxsy72-oss | опционально: добавляет кастомную рамку-прицел вокруг аватарки и шестерёнку для её настройки прямо в чате. |
-| **[Horae](https://github.com/SenriYuki/SillyTavern-Horae)** by SenriYuki | опционально: в панели расширения появляется иконка Horae. Если Horae установлен, тему можно применить через его меню. |
+| **[AvatarAdjuster](https://github.com/mooxsy72-oss/SillyTavern-AvatarAdjuster)** by mooxsy72-oss | опционально: адаптирует шестерёнку у аватарок прямо в чате. |
+| **[Horae](https://github.com/SenriYuki/SillyTavern-Horae)** by SenriYuki | опционально: в верхней панели появляется адаптированная иконка Horae. |
 
 ---
 
@@ -83,9 +81,7 @@ by **ewwn1h** ♡
 https://github.com/kkyanlx/ST-ShadowCherry
 ```
 
-Перезагрузите страницу. Импортируйте пресет `[Moonlit] Shadow Cherry meow.json` в *Quick Settings → User CSS theme preset*.
-
-> Если у вас стоит **Character Chat Pills** — отключите его, иначе две главные страницы будут конфликтовать.
+Перезагрузите страницу. Импортируйте пресет `[Moonlit] Shadow Cherry meow.json` в настройках Moonlit.
 
 ---
 
@@ -132,7 +128,6 @@ A SillyTavern extension for the **[Moonlit Echoes](https://github.com/RivelleDay
 **Close-chat cross** — a ✕ on the top bar that returns to the shelf, visible only inside a chat.
 
 **Requires** the Moonlit Echoes preset. Works with [AvatarAdjuster](https://github.com/mooxsy72-oss/SillyTavern-AvatarAdjuster) (avatar frame + gear) and [Horae](https://github.com/SenriYuki/SillyTavern-Horae) (theme import).
-Disable **Character Chat Pills** if you use it.
 
 Install via **Extensions → Install extension**:
 ```
