@@ -67,7 +67,7 @@
 
 | | |
 |---|---|
-| **[Moonlit Echoes Theme](https://github.com/RivelleDays/SillyTavern-MoonlitEchoesTheme)** by RivelleDays | тема, **обязательна**: цвета, шрифты и стили стилей чата берутся из её пресета. Пресет называется `[Moonlit] Shadow Cherry meow.json`, установить через *Quick Settings → User CSS theme preset*. |
+| **[Moonlit Echoes Theme](https://github.com/RivelleDays/SillyTavern-MoonlitEchoesTheme)** by RivelleDays | тема, **обязательна**: цвета, шрифты и стили стилей чата берутся из её пресета. Пресет называется `[Moonlit] Shadow Cherry meow.json`. |
 | **[AvatarAdjuster](https://github.com/mooxsy72-oss/SillyTavern-AvatarAdjuster)** by mooxsy72-oss | опционально: адаптирует шестерёнку у аватарок прямо в чате. |
 | **[Horae](https://github.com/SenriYuki/SillyTavern-Horae)** by SenriYuki | опционально: в верхней панели появляется адаптированная иконка Horae. |
 
