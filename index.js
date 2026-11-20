@@ -19,6 +19,7 @@ const DEFAULTS = Object.freeze({
     typing: true,          // "is typing": cameo and stars under the last message
     tags: true,            // a row of the characters' tags under the search box
     hint: null,            // text in the empty message box; null = ours, '' = nothing
+    quiet: false,          // no moth, no "is typing" and no animations from this extension
     filter: 'recent',      // sort order of the "all" view: recent · frequent · name
 });
 
@@ -64,7 +65,7 @@ const T = RU ? {
     close: 'Закрыть чат', panelClose: 'Крестик «закрыть чат» на верхней панели',
     panelHome: 'Своя главная (полка)', panelDropCap: 'Буквица в сообщениях персонажа',
     panelTyping: 'Камея «пишет…» под последним сообщением', typing: (n) => `${n} пишет…`,
-    panelHint: 'Подсказка в поле ввода', hint: 'шепни в туман…', hintEmpty: 'пусто — без подсказки',
+    panelQuiet: 'Тихий режим: без мотылька, «пишет...» и анимаций', panelHint: 'Подсказка в поле ввода', hint: 'шепни в туман…', hintEmpty: 'пусто — без подсказки',
     tagged: 'по тегам', clearTags: 'сбросить ×', tagsLabel: 'теги', panelTags: 'Теги персонажей на полке',
     tagsPrev: 'Прокрутить теги влево', tagsNext: 'Прокрутить теги вправо',
     chatSearch: 'найти в чатах…', searching: 'ищу…', noHits: 'Ничего не нашлось.', moreChats: 'ещё чаты',
@@ -101,7 +102,7 @@ const T = RU ? {
     close: 'Close chat', panelClose: '“Close chat” cross on the top bar',
     panelHome: 'Custom home (shelf)', panelDropCap: 'Drop cap in the character’s messages',
     panelTyping: '“Is typing” cameo under the last message', typing: (n) => `${n} is typing…`,
-    panelHint: 'Message box hint', hint: '<3', hintEmpty: 'empty means no hint',
+    panelQuiet: 'Quiet mode: no moth, "is typing" or animations', panelHint: 'Message box hint', hint: '<3', hintEmpty: 'empty means no hint',
     tagged: 'by tags', clearTags: 'clear ×', tagsLabel: 'tags', panelTags: 'Character tags on the shelf',
     tagsPrev: 'Scroll tags left', tagsNext: 'Scroll tags right',
     chatSearch: 'search in chats…', searching: 'searching…', noHits: 'Nothing found.', moreChats: 'more chats',
@@ -318,11 +319,23 @@ function scrollTags(direction) {
 }
 
 /* ── markup pieces ────────────────────────────────────── */
+// A character without a picture gets a quiet pattern from its name, so the same name
+// always looks the same. style.css draws four variants in the theme's own colours.
+function patternHash(name) {
+    let h = 2166136261;
+    for (const ch of String(name || '?')) h = Math.imul(h ^ ch.codePointAt(0), 16777619);
+    return h >>> 0;
+}
+function patternAttrs(name) {
+    const h = patternHash(name);
+    return ` data-pat="${h % 4}" style="--sc-pa:${(h >>> 3) % 360}deg"`;
+}
+
 function cameo(c, cls = '') {
     const hasImg = c.avatar && c.avatar !== 'none';
     const src = hasImg ? ctx().getThumbnailUrl('avatar', c.avatar) : '';
     const initial = esc((c.name || '?').trim().charAt(0).toUpperCase());
-    return `<span class="sc-cameo ${cls}" data-ini="${initial}">${hasImg ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async">` : `<span class="sc-ini">${initial}</span>`}</span>`;
+    return `<span class="sc-cameo ${cls}" data-ini="${initial}" data-name="${esc(c.name || '')}"${hasImg ? '' : patternAttrs(c.name)}>${hasImg ? `<img src="${esc(src)}" alt="" loading="lazy" decoding="async">` : `<span class="sc-ini">${initial}</span>`}</span>`;
 }
 
 // under a cameo: day of the last chat and how many chats there are
@@ -1254,6 +1267,11 @@ function onImageError(e) {
     const frame = e.target instanceof HTMLImageElement ? e.target.closest('#sc-home .sc-cameo, #sc-typing .sc-cameo') : null;
     if (!frame) return;
     e.target.remove();
+    if (!frame.dataset.pat) {
+        const h = patternHash(frame.dataset.name || frame.dataset.ini);
+        frame.dataset.pat = String(h % 4);
+        frame.style.setProperty('--sc-pa', `${(h >>> 3) % 360}deg`);
+    }
     frame.insertAdjacentHTML('beforeend', `<span class="sc-ini">${esc(frame.dataset.ini)}</span>`);
 }
 
@@ -1439,7 +1457,7 @@ function closeTarot() {
 // (the thinking included), the stop button is a moth that slowly flaps its wings.
 // The flag lives on <body>; the drawing is in style.css.
 function waiting(on) {
-    if (on) document.body.dataset.scWait = '1';
+    if (on && !getSettings().quiet) document.body.dataset.scWait = '1';
     else delete document.body.dataset.scWait;
 }
 
@@ -1460,7 +1478,7 @@ function typingCharacter(opts) {
 
 function showTyping(opts) {
     hideTyping();
-    if (!getSettings().typing) return;
+    if (!getSettings().typing || getSettings().quiet) return;
     const chatEl = document.getElementById('chat');
     const c = typingCharacter(opts);
     if (!chatEl || !c || homeEl?.isConnected) return;
@@ -1624,6 +1642,10 @@ function buildPanel() {
                         <input id="sc-tags-on" type="checkbox">
                         <span>${T.panelTags}</span>
                     </label>
+                    <label class="checkbox_label" for="sc-quiet-on">
+                        <input id="sc-quiet-on" type="checkbox">
+                        <span>${T.panelQuiet}</span>
+                    </label>
                     <label class="sc-field" for="sc-hint">
                         <span>${T.panelHint}</span>
                         <input id="sc-hint" class="text_pole" type="text" placeholder="${T.hintEmpty}" autocomplete="off">
@@ -1647,9 +1669,18 @@ function buildPanel() {
     const tagsBox = document.getElementById('sc-tags-on');
     tagsBox.checked = !!s.tags;
     tagsBox.addEventListener('change', () => { s.tags = tagsBox.checked; save(); if (!s.tags) view.tags = []; render(); });
+    const quietBox = document.getElementById('sc-quiet-on');
+    quietBox.checked = !!s.quiet;
+    quietBox.addEventListener('change', () => { s.quiet = quietBox.checked; save(); applyQuiet(); });
     const hintBox = document.getElementById('sc-hint');
     hintBox.value = typeof s.hint === 'string' ? s.hint : T.hint;
     hintBox.addEventListener('input', () => { s.hint = hintBox.value; save(); applyHint(); });
+}
+
+function applyQuiet() {
+    const on = !!getSettings().quiet;
+    document.body.classList.toggle('sc-quiet', on);
+    if (on) { waiting(false); hideTyping(); }
 }
 
 // the drop cap is drawn by style.css; this switches it on and off
@@ -1690,6 +1721,19 @@ const liftWatch = typeof ResizeObserver === 'function'
         if (av) queueLift(av);
     }))
     : null;
+// Avatars far outside the screen are not re-measured; they are marked and caught up
+// when they come into view. Without IntersectionObserver everything is handled as before.
+const liftOff = new WeakSet();           // lifted avatars currently far off screen
+const liftDirty = new Set();             // off-screen avatars that changed meanwhile
+const liftSeen = typeof IntersectionObserver === 'function'
+    ? new IntersectionObserver((list) => list.forEach((e) => {
+        const av = e.target;
+        if (e.isIntersecting) {
+            liftOff.delete(av);
+            if (liftDirty.delete(av) && av.isConnected) queueLift(av, true);
+        } else liftOff.add(av);
+    }), { rootMargin: '600px 0px' })
+    : null;
 const liftQueue = new Map();             // avatar -> 1: input styles changed, 2: size/position changed
 const liftInputs = new WeakMap();        // ignore our own --sc-av-* style mutations
 const liftAfter = new Map();             // one shared timer for the end of slide-in animations
@@ -1707,6 +1751,7 @@ function flushLifts() {
     const place = [];
     for (const [av, flags] of jobs) {
         if (!av.isConnected) { releaseLift(av); continue; }
+        if (liftOff.has(av)) { liftDirty.add(av); continue; }
         const changed = flags & 1 ? syncLift(av) : false;
         if (changed || (flags & 2)) place.push(av);
     }
@@ -1926,6 +1971,8 @@ function releaseLift(av, host = liftInputs.get(av)?.host || av.parentElement) {
     av.classList.remove('sc-av-lifted');
     av.style.removeProperty('--sc-av-clip');
     liftWatch?.unobserve(av);
+    liftSeen?.unobserve(av);
+    liftOff.delete(av); liftDirty.delete(av);
     if (host && !shared) liftWatch?.unobserve(host);
     liftInputs.delete(av);
 }
@@ -1956,6 +2003,7 @@ function syncLift(av) {
             }
             liftWatch?.observe(av);
             liftWatch?.observe(host);
+            liftSeen?.observe(av);
         }
         if (!av.classList.contains('sc-av-lifted')) av.classList.add('sc-av-lifted');
         liftInputs.set(av, { host, img, input, layer });
@@ -1980,6 +2028,8 @@ function onAvatarStyle(records) {
             else if (t.tagName === 'IMG' && t.parentElement?.classList.contains('avatar')) queueLift(t.parentElement, true);
             if (editGearFallback && (t.classList.contains('avatar') || t.classList.contains('mesAvatarWrapper'))) editGearFallback.schedule();
         } else {
+            // Streaming rewrites the text of a message on every token; avatars never live in it.
+            if (r.target.closest('.mes_text')) continue;
             if (r.target.classList.contains('mes') &&
                 [...r.addedNodes, ...r.removedNodes].some((n) => n.nodeType === 1 &&
                     (n.classList.contains('aa-edit-btn') || n.classList.contains('mesAvatarWrapper')))) {
@@ -2042,6 +2092,7 @@ function init() {
     getSettings();
     buildPanel();
     applyDropCap();
+    applyQuiet();
     applyHint();
 
     const chatEl = document.getElementById('chat');
