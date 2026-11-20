@@ -1888,9 +1888,9 @@ function placeGearSlot(mes, avatar) {
     let previous = avatar;
     if (styles.contains('ripplestyle')) {
         previous = host.querySelector('.tokenCounterDisplay') || host.querySelector('.mes_timer') || host.querySelector('.mesIDDisplay') || avatar;
-    } else if (mes.getAttribute('is_user') === 'true' && (styles.contains('whisperstyle') || styles.contains('hushstyle'))) {
-        previous = host.querySelector('.mesIDDisplay') || avatar;
     }
+    // Whisper and Hush keep the persona's avatar row unmirrored, so the slot
+    // follows the avatar there too, as in every other non-Ripple style.
     if (!slot) {
         slot = document.createElement('span');
         slot.className = 'sc-gear-slot';
